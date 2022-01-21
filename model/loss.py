@@ -2,14 +2,14 @@ import torch
 import torch.nn as nn
 import os
 import json
-from utils.tools import mel_normalize
 
 
 class DiffSingerLoss(nn.Module):
     """ DiffSinger Loss """
 
-    def __init__(self, preprocess_config, model_config):
+    def __init__(self, args, preprocess_config, model_config):
         super(DiffSingerLoss, self).__init__()
+        self.model = args.model
         self.pitch_feature_level = preprocess_config["preprocessing"]["pitch"][
             "feature"
         ]
@@ -21,7 +21,7 @@ class DiffSingerLoss(nn.Module):
 
     def forward(self, inputs, predictions):
         (
-            _,
+            mel_targets,
             _,
             _,
             pitch_targets,
@@ -29,7 +29,7 @@ class DiffSingerLoss(nn.Module):
             duration_targets,
         ) = inputs[6:]
         (
-            _,
+            mel_predictions,
             _,
             noise_loss,
             _,
@@ -44,6 +44,7 @@ class DiffSingerLoss(nn.Module):
         ) = predictions
         src_masks = ~src_masks
         mel_masks = ~mel_masks
+        mel_targets = mel_targets[:, : mel_masks.shape[1], :]
         mel_masks = mel_masks[:, :mel_masks.shape[1]]
 
         pitch_targets.requires_grad = False
@@ -72,12 +73,23 @@ class DiffSingerLoss(nn.Module):
         energy_loss = self.mse_loss(energy_predictions, energy_targets)
         duration_loss = self.mse_loss(log_duration_predictions, log_duration_targets)
 
-        total_loss = (
-            noise_loss + duration_loss + pitch_loss + energy_loss
-        )
+        total_loss = duration_loss + pitch_loss + energy_loss
+
+        if self.model == "aux":
+            noise_loss = torch.zeros(1).to(mel_targets.device)
+            mel_predictions = mel_predictions.masked_select(mel_masks.unsqueeze(-1))
+            mel_targets = mel_targets.masked_select(mel_masks.unsqueeze(-1))
+            mel_loss = self.mae_loss(mel_predictions, mel_targets)
+            total_loss += mel_loss
+        elif self.model in ["naive", "shallow"]:
+            mel_loss = torch.zeros(1).to(mel_targets.device)
+            total_loss += noise_loss
+        else:
+            raise NotImplementedError
 
         return (
             total_loss,
+            mel_loss,
             noise_loss,
             pitch_loss,
             energy_loss,

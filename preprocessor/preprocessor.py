@@ -49,6 +49,18 @@ class Preprocessor:
             config["preprocessing"]["mel"]["mel_fmin"],
             config["preprocessing"]["mel"]["mel_fmax"],
         )
+        self.val_prior = self.val_prior_names(os.path.join(self.out_dir, "val.txt"))
+
+    def val_prior_names(self, val_prior_path):
+        val_prior_names = set()
+        if os.path.isfile(val_prior_path):
+            print("Load pre-defined validation set...")
+            with open(val_prior_path, "r", encoding="utf-8") as f:
+                for m in f.readlines():
+                    val_prior_names.add(m.split("|")[0])
+            return list(val_prior_names)
+        else:
+            return None
 
     def build_from_path(self):
         os.makedirs((os.path.join(self.out_dir, "mel")), exist_ok=True)
@@ -58,9 +70,12 @@ class Preprocessor:
 
         print("Processing Data ...")
         out = list()
+        train = list()
+        val = list()
         n_frames = 0
-        mel_min = float('inf')
-        mel_max = -float('inf')
+        max_seq_len = -float('inf')
+        mel_min = np.ones(80) * float('inf')
+        mel_max = np.ones(80) * -float('inf')
         pitch_scaler = StandardScaler()
         energy_scaler = StandardScaler()
 
@@ -82,16 +97,24 @@ class Preprocessor:
                         continue
                     else:
                         info, pitch, energy, n, m_min, m_max = ret
-                    out.append(info)
+
+                    if self.val_prior is not None:
+                        if basename not in self.val_prior:
+                            train.append(info)
+                        else:
+                            val.append(info)
+                    else:
+                        out.append(info)
 
                 if len(pitch) > 0:
                     pitch_scaler.partial_fit(pitch.reshape((-1, 1)))
                 if len(energy) > 0:
                     energy_scaler.partial_fit(energy.reshape((-1, 1)))
-                if mel_min > m_min:
-                    mel_min = m_min
-                if mel_max < m_max:
-                    mel_max = m_max
+                mel_min = np.minimum(mel_min, m_min)
+                mel_max = np.maximum(mel_max, m_max)
+
+                if n > max_seq_len:
+                    max_seq_len = n
 
                 n_frames += n
 
@@ -136,10 +159,9 @@ class Preprocessor:
                     float(energy_mean),
                     float(energy_std),
                 ],
-                "mel": [
-                    float(mel_min),
-                    float(mel_max),
-                ]
+                "spec_min": mel_min.tolist(),
+                "spec_max": mel_max.tolist(),
+                "max_seq_len": max_seq_len,
             }
             f.write(json.dumps(stats))
 
@@ -149,15 +171,24 @@ class Preprocessor:
             )
         )
 
-        random.shuffle(out)
-        out = [r for r in out if r is not None]
+        if self.val_prior is not None:
+            assert len(out) == 0
+            random.shuffle(train)
+            train = [r for r in train if r is not None]
+            val = [r for r in val if r is not None]
+        else:
+            assert len(train) == 0 and len(val) == 0
+            random.shuffle(out)
+            out = [r for r in out if r is not None]
+            train = out[self.val_size :]
+            val = out[: self.val_size]
 
         # Write metadata
         with open(os.path.join(self.out_dir, "train.txt"), "w", encoding="utf-8") as f:
-            for m in out[self.val_size :]:
+            for m in train:
                 f.write(m + "\n")
         with open(os.path.join(self.out_dir, "val.txt"), "w", encoding="utf-8") as f:
-            for m in out[: self.val_size]:
+            for m in val:
                 f.write(m + "\n")
 
         return out
@@ -258,8 +289,8 @@ class Preprocessor:
             self.remove_outlier(pitch),
             self.remove_outlier(energy),
             mel_spectrogram.shape[1],
-            np.min(mel_spectrogram),
-            np.max(mel_spectrogram),
+            np.min(mel_spectrogram, axis=1),
+            np.max(mel_spectrogram, axis=1),
         )
 
     def get_alignment(self, tier):

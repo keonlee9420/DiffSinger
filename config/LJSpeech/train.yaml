@@ -9,14 +9,16 @@ optimizer:
   weight_decay: 0.0
   grad_clip_thresh: 1
   grad_acc_step: 1
-  warm_up_step: 4000
-  anneal_steps: [100000, 130000, 150000]
-  anneal_rate: 0.3
+  warm_up_step: 2000
+  anneal_steps: [50000, 100000, 150000]
+  anneal_rate: 0.5
   init_lr: 0.001
 loss:
   loss_type: 'l1'
 step:
-  total_step: 900000
+  total_step_aux: 160000
+  total_step_naive: 160000
+  total_step_shallow: 320000
   log_step: 100
   synth_step: 1000
   val_step: 1000

@@ -1,5 +1,6 @@
 import os
 import json
+import yaml
 
 import torch
 import torch.nn.functional as F
@@ -14,6 +15,17 @@ matplotlib.use("Agg")
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def get_configs_of(dataset):
+    config_dir = os.path.join("./config", dataset)
+    preprocess_config = yaml.load(open(
+        os.path.join(config_dir, "preprocess.yaml"), "r"), Loader=yaml.FullLoader)
+    model_config = yaml.load(open(
+        os.path.join(config_dir, "model.yaml"), "r"), Loader=yaml.FullLoader)
+    train_config = yaml.load(open(
+        os.path.join(config_dir, "train.yaml"), "r"), Loader=yaml.FullLoader)
+    return preprocess_config, model_config, train_config
 
 
 def to_device(data, device):
@@ -68,14 +80,18 @@ def to_device(data, device):
 
 
 def log(
-    logger, step=None, losses=None, fig=None, audio=None, sampling_rate=22050, tag=""
+    logger, step=None, losses=None, lr=None, fig=None, audio=None, sampling_rate=22050, tag=""
 ):
     if losses is not None:
         logger.add_scalar("Loss/total_loss", losses[0], step)
-        logger.add_scalar("Loss/noise_loss", losses[1], step)
-        logger.add_scalar("Loss/pitch_loss", losses[2], step)
-        logger.add_scalar("Loss/energy_loss", losses[3], step)
-        logger.add_scalar("Loss/duration_loss", losses[4], step)
+        logger.add_scalar("Loss/mel_loss", losses[1], step)
+        logger.add_scalar("Loss/noise_loss", losses[2], step)
+        logger.add_scalar("Loss/pitch_loss", losses[3], step)
+        logger.add_scalar("Loss/energy_loss", losses[4], step)
+        logger.add_scalar("Loss/duration_loss", losses[5], step)
+
+    if lr is not None:
+        logger.add_scalar("Training/learning_rate", lr, step)
 
     if fig is not None:
         logger.add_figure(tag, fig)
@@ -106,21 +122,13 @@ def expand(values, durations):
     return np.array(out)
 
 
-def mel_normalize(mel, m_min, m_max):
-    return 2 * (mel - m_min)/(m_max-m_min) - 1
-
-
-def mel_denormalize(mel_norm, m_min, m_max):
-    return (m_max - m_min) * ((mel_norm)+1)/2 + m_min
-
-
-def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_config, diffusion):
+def synth_one_sample(args, targets, predictions, vocoder, model_config, preprocess_config, diffusion):
 
     basename = targets[0][0]
     src_len = predictions[10][0].item()
     mel_len = predictions[11][0].item()
-    mel_target = targets[6][0, :mel_len].detach().transpose(0, 1)
-    duration = targets[11][0, :src_len].detach().cpu().numpy()
+    mel_target = targets[6][0, :mel_len].float().detach().transpose(0, 1)
+    duration = targets[11][0, :src_len].int().detach().cpu().numpy()
     if preprocess_config["preprocessing"]["pitch"]["feature"] == "phoneme_level":
         pitch_prediction = predictions[4][0, :src_len].detach().cpu().numpy()
         pitch_prediction = expand(pitch_prediction, duration)
@@ -144,10 +152,14 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
         stats = json.load(f)
         stats = stats["pitch"] + stats["energy"][:2]
 
-    diffusion_step = predictions[3][0].item()
-    noisy_mels = predictions[0][0, :mel_len].detach().transpose(0, 1)
-    noise_prediction = predictions[1][0, :mel_len].detach().transpose(0, 1)
-    mel_prediction = diffusion.sampling()[0, :mel_len].detach().transpose(0, 1)
+    if args.model == "aux":
+        mel_prediction = predictions[0][0, :mel_len].float().detach().transpose(0, 1)
+    else:
+        # diffusion_step = predictions[3][0].item()
+        # noisy_mels = predictions[0][0, :mel_len].detach().transpose(0, 1)
+        # noise_prediction = predictions[1][0, :mel_len].detach().transpose(0, 1)
+        mel_prediction = diffusion.sampling()[0, :mel_len].detach().transpose(0, 1)
+        diffusion.aux_mel = None
 
     fig = plot_mel(
         [
@@ -238,6 +250,7 @@ def plot_mel(data, stats, titles):
     pitch_min, pitch_max, pitch_mean, pitch_std, energy_min, energy_max = stats
     pitch_min = pitch_min * pitch_std + pitch_mean
     pitch_max = pitch_max * pitch_std + pitch_mean
+    plt.tight_layout()
 
     def add_axis(fig, old_ax):
         ax = fig.add_axes(old_ax.get_position(), anchor="W")
@@ -340,8 +353,16 @@ def pad(input_ele, mel_max_length=None):
     return out_padded
 
 
-def get_noise_schedule_list(schedule_mode):
-    schedule_list = None
+def get_noise_schedule_list(schedule_mode, timesteps, max_beta=0.01, s=0.008):
     if schedule_mode == "linear":
-        schedule_list = np.linspace(1e-4, 0.06, 100).tolist() # T == len(schedule_list)
+        schedule_list = np.linspace(1e-4, max_beta, timesteps)
+    elif schedule_mode == "cosine":
+        steps = timesteps + 1
+        x = np.linspace(0, steps, steps)
+        alphas_cumprod = np.cos(((x / steps) + s) / (1 + s) * np.pi * 0.5) ** 2
+        alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
+        betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+        schedule_list = np.clip(betas, a_min=0, a_max=0.999)
+    else:
+        raise NotImplementedError
     return schedule_list
