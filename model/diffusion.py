@@ -349,6 +349,30 @@ class GaussianDiffusionShallow(nn.Module):
         return noised_mel, epsilon, loss
 
     @torch.no_grad()
+    def expected_kld_t(self, x_pred, x_gt, t):
+        x_pred, x_gt = self.norm_spec(x_pred), self.norm_spec(x_gt)
+        t = torch.ones(x_pred.shape[0], device=x_pred.device).long() * (t-1)
+        coef = extract(self.alphas_cumprod / (2 * (1. - self.alphas_cumprod)), t, x_pred.shape)
+        return coef[0].squeeze() * F.mse_loss(x_pred, x_gt)
+
+    @torch.no_grad()
+    def expected_kld_T(self, x_start, noise=None):
+        x_start_noised = self.noised_mel(x_start)
+        mu = x_start_noised.mean()
+        logvar = x_start_noised.var().log()
+        return -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+
+    @torch.no_grad()
+    def noised_mel(self, x_start, t=None, noise=None):
+        t = self.num_timesteps if t is None else t
+        t = torch.ones(x_start.shape[0], device=x_start.device).long() * (t-1)
+        x_start = self.norm_spec(x_start)
+        x_start = x_start.transpose(1, 2)[:, None, :, :]  # [B, 1, M, T]
+        noise = default(noise, lambda: torch.randn_like(x_start))
+        noised_mel = self.q_sample(x_start=x_start, t=t, noise=noise)
+        return noised_mel.squeeze().transpose(1, 2)
+
+    @torch.no_grad()
     def sampling(self):
         b, *_, device = *self.cond.shape, self.cond.device
         t = self.K_step

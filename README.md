@@ -13,7 +13,7 @@ PyTorch implementation of [DiffSinger: Singing Voice Synthesis via Shallow Diffu
 # Repository Status
 - [x] Naive Version of DiffSpeech (not DiffSinger)
 - [x] Auxiliary Decoder (from FastSpeech2)
-- [ ] Boundary Prediction for `K`
+- [x] An Easier Trick for Boundary Prediction of `K`
 - [x] Shallow Version of DiffSpeech (Shallow Diffusion Mechanism): Leveraging pre-trained auxiliary decoder + Training denoiser using `K` as a maximum time step
 - [ ] Multi-Speaker Training
 
@@ -101,6 +101,22 @@ You can train three types of model: '**naive**', '**aux**', and '**shallow**'.
     ```
     python3 train.py --model aux --dataset DATASET
     ```
+
+- An Easier Trick for Boundary Prediction:
+
+    To get the boundary `K` from our validation dataset, you can run the boundary predictor using pre-trained auxiliary FastSpeech2 by the following command.
+    ```
+    python3 boundary_predictor.py --restore_step DATASET --dataset DATASET
+    ```
+    It will print out the predicted value in the log.
+    
+    Then, set the config with the predicted value as follows
+    ```yaml
+    # In the model.yaml
+    denoiser:
+        K_step: K_STEP
+    ```
+    Please note that this is based on the trick introduced in Appendix B.
 
 - Training Shallow Version ('**shallow**'):
 
