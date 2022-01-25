@@ -4,7 +4,7 @@ path:
   corpus_path: "/mnt/nfs2/speech-datasets/en/LJSpeech-1.1"
   lexicon_path: "lexicon/librispeech-lexicon.txt"
   raw_path: "./raw_data/LJSpeech"
-  preprocessed_path: "./preprocessed_data/LJSpeech"
+  preprocessed_path: "./preprocessed_data/LJSpeech_cwt"
 
 preprocessing:
   val_size: 512
@@ -23,8 +23,15 @@ preprocessing:
     mel_fmin: 0
     mel_fmax: 8000 # please set to 8000 for HiFi-GAN vocoder, set to null for MelGAN vocoder
   pitch:
-    feature: "frame_level" # support 'phoneme_level' or 'frame_level'
-    normalization: True
+    pitch_type: "cwt" # f0|cwt
+    pitch_norm: "log" # standard|log
+    pitch_norm_eps: 0.000000001
+    with_f0: True
+    with_f0cwt: True
+    use_uv: True
+    feature: "frame_level" # only support 'frame_level'
+    f0_mean: 214.31683793057
+    f0_std: 63.97520977575229
   energy:
-    feature: "frame_level" # support 'phoneme_level' or 'frame_level'
+    feature: "frame_level" # only support 'frame_level'
     normalization: True

@@ -29,7 +29,7 @@ def get_configs_of(dataset):
 
 
 def to_device(data, device):
-    if len(data) == 12:
+    if len(data) == 18:
         (
             ids,
             raw_texts,
@@ -41,19 +41,30 @@ def to_device(data, device):
             mel_lens,
             max_mel_len,
             pitches,
+            f0s,
+            uvs,
+            cwt_specs,
+            f0_means,
+            f0_stds,
             energies,
             durations,
+            mel2phs,
         ) = data
 
         speakers = torch.from_numpy(speakers).long().to(device)
         texts = torch.from_numpy(texts).long().to(device)
         src_lens = torch.from_numpy(src_lens).to(device)
-        if mels is not None:
-            mels = torch.from_numpy(mels).float().to(device)
+        mels = torch.from_numpy(mels).float().to(device) if mels is not None else mels
         mel_lens = torch.from_numpy(mel_lens).to(device)
-        pitches = torch.from_numpy(pitches).float().to(device)
+        pitches = torch.from_numpy(pitches).long().to(device)
+        f0s = torch.from_numpy(f0s).float().to(device)
+        uvs = torch.from_numpy(uvs).float().to(device)
+        cwt_specs = torch.from_numpy(cwt_specs).float().to(device) if cwt_specs is not None else cwt_specs
+        f0_means = torch.from_numpy(f0_means).float().to(device) if f0_means is not None else f0_means
+        f0_stds = torch.from_numpy(f0_stds).float().to(device) if f0_stds is not None else f0_stds
         energies = torch.from_numpy(energies).to(device)
         durations = torch.from_numpy(durations).long().to(device)
+        mel2phs = torch.from_numpy(mel2phs).long().to(device)
 
         return (
             ids,
@@ -66,8 +77,14 @@ def to_device(data, device):
             mel_lens,
             max_mel_len,
             pitches,
+            f0s,
+            uvs,
+            cwt_specs,
+            f0_means,
+            f0_stds,
             energies,
             durations,
+            mel2phs,
         )
 
     if len(data) == 6:
@@ -375,3 +392,45 @@ def get_noise_schedule_list(schedule_mode, timesteps, max_beta=0.01, s=0.008):
     else:
         raise NotImplementedError
     return schedule_list
+
+
+def dur_to_mel2ph(dur, dur_padding=None, alpha=1.0):
+    """
+    Example (no batch dim version):
+        1. dur = [2,2,3]
+        2. token_idx = [[1],[2],[3]], dur_cumsum = [2,4,7], dur_cumsum_prev = [0,2,4]
+        3. token_mask = [[1,1,0,0,0,0,0],
+                            [0,0,1,1,0,0,0],
+                            [0,0,0,0,1,1,1]]
+        4. token_idx * token_mask = [[1,1,0,0,0,0,0],
+                                        [0,0,2,2,0,0,0],
+                                        [0,0,0,0,3,3,3]]
+        5. (token_idx * token_mask).sum(0) = [1,1,2,2,3,3,3]
+
+    :param dur: Batch of durations of each frame (B, T_txt)
+    :param dur_padding: Batch of padding of each frame (B, T_txt)
+    :param alpha: duration rescale coefficient
+    :return:
+        mel2ph (B, T_speech)
+    """
+    assert alpha > 0
+    dur = torch.round(dur.float() * alpha).long()
+    if dur_padding is not None:
+        dur = dur * (1 - dur_padding.long())
+    token_idx = torch.arange(1, dur.shape[1] + 1)[None, :, None].to(dur.device)
+    dur_cumsum = torch.cumsum(dur, 1)
+    dur_cumsum_prev = F.pad(dur_cumsum, [1, -1], mode='constant', value=0)
+
+    pos_idx = torch.arange(dur.sum(-1).max())[None, None].to(dur.device)
+    token_mask = (pos_idx >= dur_cumsum_prev[:, :, None]) & (pos_idx < dur_cumsum[:, :, None])
+    mel2ph = (token_idx * token_mask.long()).sum(1)
+    return mel2ph
+
+
+def mel2ph_to_dur(mel2ph, T_txt, max_dur=None):
+    B, _ = mel2ph.shape
+    dur = mel2ph.new_zeros(B, T_txt + 1).scatter_add(1, mel2ph, torch.ones_like(mel2ph))
+    dur = dur[:, 1:]
+    if max_dur is not None:
+        dur = dur.clamp(max=max_dur)
+    return dur

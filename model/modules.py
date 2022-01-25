@@ -262,6 +262,8 @@ class VarianceAdaptor(nn.Module):
         self.pitch_predictor = VariancePredictor(model_config)
         self.energy_predictor = VariancePredictor(model_config)
 
+        self.use_pitch_embed = model_config["variance_embedding"]["use_pitch_embed"]
+        self.use_energy_embed = model_config["variance_embedding"]["use_energy_embed"]
         self.predictor_grad = model_config["variance_predictor"]["predictor_grad"]
         self.pitch_feature_level = preprocess_config["preprocessing"]["pitch"][
             "feature"
@@ -272,30 +274,30 @@ class VarianceAdaptor(nn.Module):
         assert self.pitch_feature_level in ["phoneme_level", "frame_level"]
         assert self.energy_feature_level in ["phoneme_level", "frame_level"]
 
-        pitch_quantization = model_config["variance_embedding"]["pitch_quantization"]
+        # pitch_quantization = model_config["variance_embedding"]["pitch_quantization"]
         energy_quantization = model_config["variance_embedding"]["energy_quantization"]
         n_bins = model_config["variance_embedding"]["n_bins"]
-        assert pitch_quantization in ["linear", "log"]
+        # assert pitch_quantization in ["linear", "log"]
         assert energy_quantization in ["linear", "log"]
         with open(
             os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
         ) as f:
             stats = json.load(f)
-            pitch_min, pitch_max = stats["pitch"][:2]
+            # pitch_min, pitch_max = stats["pitch"][:2]
             energy_min, energy_max = stats["energy"][:2]
 
-        if pitch_quantization == "log":
-            self.pitch_bins = nn.Parameter(
-                torch.exp(
-                    torch.linspace(np.log(pitch_min), np.log(pitch_max), n_bins - 1)
-                ),
-                requires_grad=False,
-            )
-        else:
-            self.pitch_bins = nn.Parameter(
-                torch.linspace(pitch_min, pitch_max, n_bins - 1),
-                requires_grad=False,
-            )
+        # if pitch_quantization == "log":
+        #     self.pitch_bins = nn.Parameter(
+        #         torch.exp(
+        #             torch.linspace(np.log(pitch_min), np.log(pitch_max), n_bins - 1)
+        #         ),
+        #         requires_grad=False,
+        #     )
+        # else:
+        #     self.pitch_bins = nn.Parameter(
+        #         torch.linspace(pitch_min, pitch_max, n_bins - 1),
+        #         requires_grad=False,
+        #     )
         if energy_quantization == "log":
             self.energy_bins = nn.Parameter(
                 torch.exp(
@@ -309,9 +311,9 @@ class VarianceAdaptor(nn.Module):
                 requires_grad=False,
             )
 
-        self.pitch_embedding = nn.Embedding(
-            n_bins, model_config["transformer"]["encoder_hidden"]
-        )
+        # self.pitch_embedding = nn.Embedding(
+        #     n_bins, model_config["transformer"]["encoder_hidden"]
+        # )
         self.energy_embedding = nn.Embedding(
             n_bins, model_config["transformer"]["encoder_hidden"]
         )
@@ -354,12 +356,12 @@ class VarianceAdaptor(nn.Module):
 
         output = x.clone()
         log_duration_prediction = self.duration_predictor(x, src_mask)
-        if self.pitch_feature_level == "phoneme_level":
+        if self.use_pitch_embed and self.pitch_feature_level == "phoneme_level":
             pitch_prediction, pitch_embedding = self.get_pitch_embedding(
                 x.detach() + self.predictor_grad * (x - x.detach()), pitch_target, src_mask, p_control
             )
             output += pitch_embedding
-        if self.energy_feature_level == "phoneme_level":
+        if self.use_energy_embed and self.energy_feature_level == "phoneme_level":
             energy_prediction, energy_embedding = self.get_energy_embedding(
                 x.detach() + self.predictor_grad * (x - x.detach()), energy_target, src_mask, p_control
             )
@@ -378,12 +380,12 @@ class VarianceAdaptor(nn.Module):
             mel_mask = get_mask_from_lengths(mel_len)
 
         output = x.clone()
-        if self.pitch_feature_level == "frame_level":
+        if self.use_pitch_embed and self.pitch_feature_level == "frame_level":
             pitch_prediction, pitch_embedding = self.get_pitch_embedding(
                 x.detach() + self.predictor_grad * (x - x.detach()), pitch_target, mel_mask, p_control
             )
             output += pitch_embedding
-        if self.energy_feature_level == "frame_level":
+        if self.use_energy_embed and self.energy_feature_level == "frame_level":
             energy_prediction, energy_embedding = self.get_energy_embedding(
                 x.detach() + self.predictor_grad * (x - x.detach()), energy_target, mel_mask, p_control
             )

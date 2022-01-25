@@ -209,6 +209,8 @@ if __name__ == "__main__":
     print("\n==================================== Training Configuration ====================================")
     print(" ---> Type of Modeling:", args.model)
     print(' ---> Total Batch Size:', int(train_config["optimizer"]["batch_size"]))
+    print(' ---> Use Pitch Embed:', model_config["variance_embedding"]["use_pitch_embed"])
+    print(' ---> Use Energy Embed:', model_config["variance_embedding"]["use_energy_embed"])
     print(' ---> Path of ckpt:', train_config["path"]["ckpt_path"])
     print(' ---> Path of log:', train_config["path"]["log_path"])
     print(' ---> Path of result:', train_config["path"]["result_path"])

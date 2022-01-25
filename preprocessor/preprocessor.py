@@ -5,12 +5,18 @@ import json
 import tgt
 import librosa
 import numpy as np
-import pyworld as pw
+# import pyworld as pw
 from scipy.interpolate import interp1d
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 
 import audio as Audio
+from utils.pitch_utils import get_pitch, get_cont_lf0, get_lf0_cwt
+from utils.tools import dur_to_mel2ph, mel2ph_to_dur
+
+
+class BinarizationError(Exception):
+    pass
 
 
 class Preprocessor:
@@ -22,6 +28,8 @@ class Preprocessor:
         self.sampling_rate = config["preprocessing"]["audio"]["sampling_rate"]
         self.hop_length = config["preprocessing"]["stft"]["hop_length"]
 
+        self.with_f0 = config["preprocessing"]["pitch"]["with_f0"]
+        self.with_f0cwt = config["preprocessing"]["pitch"]["with_f0cwt"]
         assert config["preprocessing"]["pitch"]["feature"] in [
             "phoneme_level",
             "frame_level",
@@ -30,14 +38,9 @@ class Preprocessor:
             "phoneme_level",
             "frame_level",
         ]
-        self.pitch_phoneme_averaging = (
-            config["preprocessing"]["pitch"]["feature"] == "phoneme_level"
-        )
         self.energy_phoneme_averaging = (
             config["preprocessing"]["energy"]["feature"] == "phoneme_level"
         )
-
-        self.pitch_normalization = config["preprocessing"]["pitch"]["normalization"]
         self.energy_normalization = config["preprocessing"]["energy"]["normalization"]
 
         self.STFT = Audio.stft.TacotronSTFT(
@@ -64,9 +67,14 @@ class Preprocessor:
 
     def build_from_path(self):
         os.makedirs((os.path.join(self.out_dir, "mel")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "f0")), exist_ok=True)
         os.makedirs((os.path.join(self.out_dir, "pitch")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "cwt_spec")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "cwt_scales")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "f0cwt_mean_std")), exist_ok=True)
         os.makedirs((os.path.join(self.out_dir, "energy")), exist_ok=True)
         os.makedirs((os.path.join(self.out_dir, "duration")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "mel2ph")), exist_ok=True)
 
         print("Processing Data ...")
         out = list()
@@ -76,7 +84,7 @@ class Preprocessor:
         max_seq_len = -float('inf')
         mel_min = np.ones(80) * float('inf')
         mel_max = np.ones(80) * -float('inf')
-        pitch_scaler = StandardScaler()
+        f0s = []
         energy_scaler = StandardScaler()
 
         # Compute pitch, energy, duration, and mel-spectrogram
@@ -96,7 +104,7 @@ class Preprocessor:
                     if ret is None:
                         continue
                     else:
-                        info, pitch, energy, n, m_min, m_max = ret
+                        info, f0, energy, n, m_min, m_max = ret
 
                     if self.val_prior is not None:
                         if basename not in self.val_prior:
@@ -106,8 +114,8 @@ class Preprocessor:
                     else:
                         out.append(info)
 
-                if len(pitch) > 0:
-                    pitch_scaler.partial_fit(pitch.reshape((-1, 1)))
+                if len(f0) > 0:
+                    f0s.append(f0)
                 if len(energy) > 0:
                     energy_scaler.partial_fit(energy.reshape((-1, 1)))
                 mel_min = np.minimum(mel_min, m_min)
@@ -119,24 +127,21 @@ class Preprocessor:
                 n_frames += n
 
         print("Computing statistic quantities ...")
+        if len(f0s) > 0:
+            f0s = np.concatenate(f0s, 0)
+            f0s = f0s[f0s != 0]
+            f0_mean = np.mean(f0s).item()
+            f0_std = np.std(f0s).item()
+
         # Perform normalization if necessary
-        if self.pitch_normalization:
-            pitch_mean = pitch_scaler.mean_[0]
-            pitch_std = pitch_scaler.scale_[0]
-        else:
-            # A numerical trick to avoid normalization...
-            pitch_mean = 0
-            pitch_std = 1
         if self.energy_normalization:
             energy_mean = energy_scaler.mean_[0]
             energy_std = energy_scaler.scale_[0]
         else:
+            # A numerical trick to avoid normalization...
             energy_mean = 0
             energy_std = 1
 
-        pitch_min, pitch_max = self.normalize(
-            os.path.join(self.out_dir, "pitch"), pitch_mean, pitch_std
-        )
         energy_min, energy_max = self.normalize(
             os.path.join(self.out_dir, "energy"), energy_mean, energy_std
         )
@@ -147,11 +152,9 @@ class Preprocessor:
 
         with open(os.path.join(self.out_dir, "stats.json"), "w") as f:
             stats = {
-                "pitch": [
-                    float(pitch_min),
-                    float(pitch_max),
-                    float(pitch_mean),
-                    float(pitch_std),
+                "f0": [
+                    float(f0_mean),
+                    float(f0_std),
                 ],
                 "energy": [
                     float(energy_min),
@@ -202,7 +205,7 @@ class Preprocessor:
 
         # Get alignments
         textgrid = tgt.io.read_textgrid(tg_path)
-        phone, duration, start, end = self.get_alignment(
+        phone, duration, mel2ph, start, end = self.get_alignment(
             textgrid.get_tier_by_name("phones")
         )
         text = "{" + " ".join(phone) + "}"
@@ -219,61 +222,38 @@ class Preprocessor:
         with open(text_path, "r") as f:
             raw_text = f.readline().strip("\n")
 
-        # Compute fundamental frequency
-        pitch, t = pw.dio(
-            wav.astype(np.float64),
-            self.sampling_rate,
-            frame_period=self.hop_length / self.sampling_rate * 1000,
-        )
-        pitch = pw.stonemask(wav.astype(np.float64), pitch, t, self.sampling_rate)
-
-        pitch = pitch[: sum(duration)]
-        if np.sum(pitch != 0) <= 1:
-            return None
-
         # Compute mel-scale spectrogram and energy
         mel_spectrogram, energy = Audio.tools.get_mel_from_wav(wav, self.STFT)
         mel_spectrogram = mel_spectrogram[:, : sum(duration)]
         energy = energy[: sum(duration)]
 
-        if self.pitch_phoneme_averaging:
-            # perform linear interpolation
-            nonzero_ids = np.where(pitch != 0)[0]
-            interp_fn = interp1d(
-                nonzero_ids,
-                pitch[nonzero_ids],
-                fill_value=(pitch[nonzero_ids[0]], pitch[nonzero_ids[-1]]),
-                bounds_error=False,
-            )
-            pitch = interp_fn(np.arange(0, len(pitch)))
-
-            # Phoneme-level average
-            pos = 0
-            for i, d in enumerate(duration):
-                if d > 0:
-                    pitch[i] = np.mean(pitch[pos : pos + d])
-                else:
-                    pitch[i] = 0
-                pos += d
-            pitch = pitch[: len(duration)]
-
-        if self.energy_phoneme_averaging:
-            # Phoneme-level average
-            pos = 0
-            for i, d in enumerate(duration):
-                if d > 0:
-                    energy[i] = np.mean(energy[pos : pos + d])
-                else:
-                    energy[i] = 0
-                pos += d
-            energy = energy[: len(duration)]
+        # Compute pitch
+        if self.with_f0:
+            f0, pitch = self.get_pitch(wav, mel_spectrogram.T)
+            if self.with_f0cwt:
+                cwt_spec, cwt_scales, f0cwt_mean_std = self.get_f0cwt(f0)
 
         # Save files
         dur_filename = "{}-duration-{}.npy".format(speaker, basename)
         np.save(os.path.join(self.out_dir, "duration", dur_filename), duration)
 
+        mel2ph_filename = "{}-mel2ph-{}.npy".format(speaker, basename)
+        np.save(os.path.join(self.out_dir, "mel2ph", mel2ph_filename), mel2ph)
+
+        f0_filename = "{}-f0-{}.npy".format(speaker, basename)
+        np.save(os.path.join(self.out_dir, "f0", f0_filename), f0)
+
         pitch_filename = "{}-pitch-{}.npy".format(speaker, basename)
         np.save(os.path.join(self.out_dir, "pitch", pitch_filename), pitch)
+
+        cwt_spec_filename = "{}-cwt_spec-{}.npy".format(speaker, basename)
+        np.save(os.path.join(self.out_dir, "cwt_spec", cwt_spec_filename), cwt_spec)
+
+        cwt_scales_filename = "{}-cwt_scales-{}.npy".format(speaker, basename)
+        np.save(os.path.join(self.out_dir, "cwt_scales", cwt_scales_filename), cwt_scales)
+
+        f0cwt_mean_std_filename = "{}-f0cwt_mean_std-{}.npy".format(speaker, basename)
+        np.save(os.path.join(self.out_dir, "f0cwt_mean_std", f0cwt_mean_std_filename), f0cwt_mean_std)
 
         energy_filename = "{}-energy-{}.npy".format(speaker, basename)
         np.save(os.path.join(self.out_dir, "energy", energy_filename), energy)
@@ -286,7 +266,7 @@ class Preprocessor:
 
         return (
             "|".join([basename, speaker, text, raw_text]),
-            self.remove_outlier(pitch),
+            f0,
             self.remove_outlier(energy),
             mel_spectrogram.shape[1],
             np.min(mel_spectrogram, axis=1),
@@ -298,6 +278,7 @@ class Preprocessor:
 
         phones = []
         durations = []
+        mel2ph = []
         start_time = 0
         end_time = 0
         end_idx = 0
@@ -331,7 +312,28 @@ class Preprocessor:
         phones = phones[:end_idx]
         durations = durations[:end_idx]
 
-        return phones, durations, start_time, end_time
+        # Get mel2ph
+        for ph_idx in range(len(phones)):
+            mel2ph += [ph_idx + 1] * durations[ph_idx]
+        assert sum(durations) == len(mel2ph)
+
+        return phones, durations, mel2ph, start_time, end_time
+
+    def get_pitch(self, wav, mel):
+        f0, pitch_coarse = get_pitch(wav, mel, self.config)
+        if sum(f0) == 0:
+            raise BinarizationError("Empty f0")
+        return f0, pitch_coarse
+
+    def get_f0cwt(self, f0):
+        uv, cont_lf0_lpf = get_cont_lf0(f0)
+        logf0s_mean_org, logf0s_std_org = np.mean(cont_lf0_lpf), np.std(cont_lf0_lpf)
+        logf0s_mean_std_org = np.array([logf0s_mean_org, logf0s_std_org])
+        cont_lf0_lpf_norm = (cont_lf0_lpf - logf0s_mean_org) / logf0s_std_org
+        Wavelet_lf0, scales = get_lf0_cwt(cont_lf0_lpf_norm)
+        if np.any(np.isnan(Wavelet_lf0)):
+            raise BinarizationError("NaN CWT")
+        return Wavelet_lf0, scales, logf0s_mean_std_org
 
     def remove_outlier(self, values):
         values = np.array(values)

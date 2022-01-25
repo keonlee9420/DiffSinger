@@ -10,6 +10,8 @@ class DiffSingerLoss(nn.Module):
     def __init__(self, args, preprocess_config, model_config):
         super(DiffSingerLoss, self).__init__()
         self.model = args.model
+        self.use_pitch_embed = model_config["variance_embedding"]["use_pitch_embed"]
+        self.use_energy_embed = model_config["variance_embedding"]["use_energy_embed"]
         self.pitch_feature_level = preprocess_config["preprocessing"]["pitch"][
             "feature"
         ]
@@ -52,26 +54,27 @@ class DiffSingerLoss(nn.Module):
         log_duration_targets = torch.log(duration_targets.float() + 1)
         log_duration_targets.requires_grad = False
 
-        if self.pitch_feature_level == "phoneme_level":
-            pitch_predictions = pitch_predictions.masked_select(src_masks)
-            pitch_targets = pitch_targets.masked_select(src_masks)
-        elif self.pitch_feature_level == "frame_level":
-            pitch_predictions = pitch_predictions.masked_select(mel_masks)
-            pitch_targets = pitch_targets.masked_select(mel_masks)
-
-        if self.energy_feature_level == "phoneme_level":
-            energy_predictions = energy_predictions.masked_select(src_masks)
-            energy_targets = energy_targets.masked_select(src_masks)
-        if self.energy_feature_level == "frame_level":
-            energy_predictions = energy_predictions.masked_select(mel_masks)
-            energy_targets = energy_targets.masked_select(mel_masks)
-
         log_duration_predictions = log_duration_predictions.masked_select(src_masks)
         log_duration_targets = log_duration_targets.masked_select(src_masks)
-
-        pitch_loss = self.mae_loss(pitch_predictions, pitch_targets)
-        energy_loss = self.mae_loss(energy_predictions, energy_targets)
         duration_loss = self.mse_loss(log_duration_predictions, log_duration_targets)
+
+        pitch_loss = energy_loss = torch.zeros(1).to(mel_targets.device)
+        if self.use_pitch_embed:
+            if self.pitch_feature_level == "phoneme_level":
+                pitch_predictions = pitch_predictions.masked_select(src_masks)
+                pitch_targets = pitch_targets.masked_select(src_masks)
+            elif self.pitch_feature_level == "frame_level":
+                pitch_predictions = pitch_predictions.masked_select(mel_masks)
+                pitch_targets = pitch_targets.masked_select(mel_masks)
+            pitch_loss = self.mae_loss(pitch_predictions, pitch_targets)
+        if self.use_energy_embed:
+            if self.energy_feature_level == "phoneme_level":
+                energy_predictions = energy_predictions.masked_select(src_masks)
+                energy_targets = energy_targets.masked_select(src_masks)
+            if self.energy_feature_level == "frame_level":
+                energy_predictions = energy_predictions.masked_select(mel_masks)
+                energy_targets = energy_targets.masked_select(mel_masks)
+            energy_loss = self.mae_loss(energy_predictions, energy_targets)
 
         total_loss = duration_loss + pitch_loss + energy_loss
 

@@ -57,13 +57,28 @@ class DiffSinger(nn.Module):
         mels=None,
         mel_lens=None,
         max_mel_len=None,
-        p_targets=None,
+        pitches=None,
+        f0s=None,
+        uvs=None,
+        cwt_specs=None,
+        f0_means=None,
+        f0_stds=None,
         e_targets=None,
         d_targets=None,
+        mel2phs=None,
         p_control=1.0,
         e_control=1.0,
         d_control=1.0,
     ):
+
+        print("pitches.shape:", pitches.shape)
+        print("f0s.shape:", f0s.shape)
+        print("uvs.shape:", uvs.shape)
+        print("cwt_specs.shape:", cwt_specs.shape if cwt_specs is not None else None)
+        print("f0_means.shape:", f0_means.shape if f0_means is not None else None)
+        print("f0_stds.shape:", f0_stds.shape if f0_stds is not None else None)
+        print("mel2phs.shape:", mel2phs.shape)
+        exit(0)
         src_masks = get_mask_from_lengths(src_lens, max_src_len)
         mel_masks = (
             get_mask_from_lengths(mel_lens, max_mel_len)
