@@ -28,6 +28,10 @@ variance_predictor:
   kernel_size: 3
   dropout: 0.5
   predictor_grad: 0.1
+  predictor_layers: 2
+  cwt_hidden_size: 128
+  cwt_std_scale: 0.8
+  ffn_padding: "SAME"
 
 variance_embedding:
   use_pitch_embed: True

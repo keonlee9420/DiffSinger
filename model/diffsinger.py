@@ -71,14 +71,6 @@ class DiffSinger(nn.Module):
         d_control=1.0,
     ):
 
-        print("pitches.shape:", pitches.shape)
-        print("f0s.shape:", f0s.shape)
-        print("uvs.shape:", uvs.shape)
-        print("cwt_specs.shape:", cwt_specs.shape if cwt_specs is not None else None)
-        print("f0_means.shape:", f0_means.shape if f0_means is not None else None)
-        print("f0_stds.shape:", f0_stds.shape if f0_stds is not None else None)
-        print("mel2phs.shape:", mel2phs.shape)
-        exit(0)
         src_masks = get_mask_from_lengths(src_lens, max_src_len)
         mel_masks = (
             get_mask_from_lengths(mel_lens, max_mel_len)
@@ -93,6 +85,14 @@ class DiffSinger(nn.Module):
                 -1, max_src_len, -1
             )
 
+        p_targets = {
+            "pitche": pitches,
+            "f0": f0s,
+            "uv": uvs,
+            "cwt_spec": cwt_specs,
+            "f0_mean": f0_means,
+            "f0_std": f0_stds,
+        }
         (
             output,
             p_predictions,
@@ -109,6 +109,7 @@ class DiffSinger(nn.Module):
             p_targets,
             e_targets,
             d_targets,
+            mel2phs,
             p_control,
             e_control,
             d_control,
@@ -144,7 +145,7 @@ class DiffSinger(nn.Module):
                 )
         else:
             raise NotImplementedError
-
+        exit(0)
         return (
             output,
             epsilon_predictions,

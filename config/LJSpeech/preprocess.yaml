@@ -23,7 +23,7 @@ preprocessing:
     mel_fmin: 0
     mel_fmax: 8000 # please set to 8000 for HiFi-GAN vocoder, set to null for MelGAN vocoder
   pitch:
-    pitch_type: "cwt" # f0|cwt
+    pitch_type: "cwt" # frame|ph|cwt
     pitch_norm: "log" # standard|log
     pitch_norm_eps: 0.000000001
     with_f0: True

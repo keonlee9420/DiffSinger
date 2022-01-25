@@ -65,16 +65,17 @@ def norm_interp_f0(f0, config):
     return f0, uv
 
 
-def denorm_f0(f0, uv, hparams, pitch_padding=None, min=None, max=None):
-    if hparams['pitch_norm'] == 'standard':
-        f0 = f0 * hparams['f0_std'] + hparams['f0_mean']
-    if hparams['pitch_norm'] == 'log':
+def denorm_f0(f0, uv, config, pitch_padding=None, min=None, max=None):
+    config = config["preprocessing"]["pitch"]
+    if config['pitch_norm'] == 'standard':
+        f0 = f0 * config['f0_std'] + config['f0_mean']
+    if config['pitch_norm'] == 'log':
         f0 = 2 ** f0
     if min is not None:
         f0 = f0.clamp(min=min)
     if max is not None:
         f0 = f0.clamp(max=max)
-    if uv is not None and hparams['use_uv']:
+    if uv is not None and config['use_uv']:
         f0[uv > 0] = 0
     if pitch_padding is not None:
         f0[pitch_padding] = 0
