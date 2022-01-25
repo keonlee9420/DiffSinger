@@ -1,5 +1,5 @@
 transformer:
-  encoder_layer: 4
+  encoder_layer: 2
   encoder_head: 2
   encoder_hidden: 256
   decoder_layer: 6
@@ -27,6 +27,7 @@ variance_predictor:
   filter_size: 256
   kernel_size: 3
   dropout: 0.5
+  predictor_grad: 0.1
 
 variance_embedding:
   pitch_quantization: "linear" # support 'linear' or 'log', 'log' is allowed only if the pitch values are not normalized during preprocessing

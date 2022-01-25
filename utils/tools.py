@@ -48,7 +48,8 @@ def to_device(data, device):
         speakers = torch.from_numpy(speakers).long().to(device)
         texts = torch.from_numpy(texts).long().to(device)
         src_lens = torch.from_numpy(src_lens).to(device)
-        mels = torch.from_numpy(mels).float().to(device)
+        if mels is not None:
+            mels = torch.from_numpy(mels).float().to(device)
         mel_lens = torch.from_numpy(mel_lens).to(device)
         pitches = torch.from_numpy(pitches).float().to(device)
         energies = torch.from_numpy(energies).to(device)
@@ -194,8 +195,10 @@ def synth_one_sample(args, targets, predictions, vocoder, model_config, preproce
     return fig, wav_reconstruction, wav_prediction, basename
 
 
-def synth_samples(targets, predictions, vocoder, model_config, preprocess_config, path):
+def synth_samples(targets, predictions, vocoder, model_config, preprocess_config, path, args):
 
+    multi_speaker = model_config["multi_speaker"]
+    teacher_forced_tag = "_teacher_forced" if args.teacher_forced else ""
     basenames = targets[0]
     for i in range(len(predictions[0])):
         basename = basenames[i]
@@ -220,6 +223,9 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
             stats = json.load(f)
             stats = stats["pitch"] + stats["energy"][:2]
 
+        fig_save_dir = os.path.join(
+            path, str(args.restore_step), "{}_{}{}.png".format(basename, args.speaker_id, teacher_forced_tag)\
+                if multi_speaker and args.mode == "single" else "{}{}.png".format(basename, teacher_forced_tag))
         fig = plot_mel(
             [
                 (mel_prediction.cpu().numpy(), pitch, energy),
@@ -227,7 +233,7 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
             stats,
             ["Synthetized Spectrogram"],
         )
-        plt.savefig(os.path.join(path, "{}.png".format(basename)))
+        plt.savefig(fig_save_dir)
         plt.close()
 
     from .model import vocoder_infer
@@ -240,7 +246,10 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
 
     sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
     for wav, basename in zip(wav_predictions, basenames):
-        wavfile.write(os.path.join(path, "{}.wav".format(basename)), sampling_rate, wav)
+        wavfile.write(os.path.join(
+            path, str(args.restore_step), "{}_{}{}.wav".format(basename, args.speaker_id, teacher_forced_tag)\
+                if multi_speaker and args.mode == "single" else "{}{}.wav".format(basename, teacher_forced_tag)),
+            sampling_rate, wav)
 
 
 def plot_mel(data, stats, titles):

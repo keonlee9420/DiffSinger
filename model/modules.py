@@ -262,6 +262,7 @@ class VarianceAdaptor(nn.Module):
         self.pitch_predictor = VariancePredictor(model_config)
         self.energy_predictor = VariancePredictor(model_config)
 
+        self.predictor_grad = model_config["variance_predictor"]["predictor_grad"]
         self.pitch_feature_level = preprocess_config["preprocessing"]["pitch"][
             "feature"
         ]
@@ -355,12 +356,12 @@ class VarianceAdaptor(nn.Module):
         log_duration_prediction = self.duration_predictor(x, src_mask)
         if self.pitch_feature_level == "phoneme_level":
             pitch_prediction, pitch_embedding = self.get_pitch_embedding(
-                x, pitch_target, src_mask, p_control
+                x.detach() + self.predictor_grad * (x - x.detach()), pitch_target, src_mask, p_control
             )
             output += pitch_embedding
         if self.energy_feature_level == "phoneme_level":
             energy_prediction, energy_embedding = self.get_energy_embedding(
-                x, energy_target, src_mask, p_control
+                x.detach() + self.predictor_grad * (x - x.detach()), energy_target, src_mask, p_control
             )
             output += energy_embedding
         x = output.clone()
@@ -379,12 +380,12 @@ class VarianceAdaptor(nn.Module):
         output = x.clone()
         if self.pitch_feature_level == "frame_level":
             pitch_prediction, pitch_embedding = self.get_pitch_embedding(
-                x, pitch_target, mel_mask, p_control
+                x.detach() + self.predictor_grad * (x - x.detach()), pitch_target, mel_mask, p_control
             )
             output += pitch_embedding
         if self.energy_feature_level == "frame_level":
             energy_prediction, energy_embedding = self.get_energy_embedding(
-                x, energy_target, mel_mask, p_control
+                x.detach() + self.predictor_grad * (x - x.detach()), energy_target, mel_mask, p_control
             )
             output += energy_embedding
         x = output.clone()

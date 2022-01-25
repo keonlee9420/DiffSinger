@@ -69,8 +69,8 @@ class DiffSingerLoss(nn.Module):
         log_duration_predictions = log_duration_predictions.masked_select(src_masks)
         log_duration_targets = log_duration_targets.masked_select(src_masks)
 
-        pitch_loss = self.mse_loss(pitch_predictions, pitch_targets)
-        energy_loss = self.mse_loss(energy_predictions, energy_targets)
+        pitch_loss = self.mae_loss(pitch_predictions, pitch_targets)
+        energy_loss = self.mae_loss(energy_predictions, energy_targets)
         duration_loss = self.mse_loss(log_duration_predictions, log_duration_targets)
 
         total_loss = duration_loss + pitch_loss + energy_loss
