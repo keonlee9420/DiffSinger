@@ -47,6 +47,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--restore_step", type=int, required=True)
+    parser.add_argument("--path_tag", type=str, default="")
     parser.add_argument(
         "--model",
         type=str,
@@ -64,9 +65,10 @@ if __name__ == "__main__":
     args.model = "aux"
     preprocess_config, model_config, train_config = get_configs_of(args.dataset)
     configs = (preprocess_config, model_config, train_config)
-    train_config["path"]["ckpt_path"] = train_config["path"]["ckpt_path"]+"_{}".format("shallow")
-    train_config["path"]["log_path"] = train_config["path"]["log_path"]+"_{}".format("shallow")
-    train_config["path"]["result_path"] = train_config["path"]["result_path"]+"_{}".format("aux")
+    path_tag = "_{}".format(args.path_tag) if args.path_tag != "" else args.path_tag
+    train_config["path"]["ckpt_path"] = train_config["path"]["ckpt_path"]+"_{}{}".format("shallow", path_tag)
+    train_config["path"]["log_path"] = train_config["path"]["log_path"]+"_{}{}".format("shallow", path_tag)
+    train_config["path"]["result_path"] = train_config["path"]["result_path"]+"_{}{}".format("aux", path_tag)
     if preprocess_config["preprocessing"]["pitch"]["pitch_type"] == 'cwt':
         import numpy as np
         from utils.pitch_utils import get_lf0_cwt

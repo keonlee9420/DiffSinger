@@ -178,6 +178,7 @@ def main(args, configs):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--restore_step", type=int, default=0)
+    parser.add_argument("--path_tag", type=str, default="")
     parser.add_argument(
         '--model',
         type=str,
@@ -204,9 +205,10 @@ if __name__ == "__main__":
         train_tag = "naive"
     else:
         raise NotImplementedError
-    train_config["path"]["ckpt_path"] = train_config["path"]["ckpt_path"]+"_{}".format(train_tag)
-    train_config["path"]["log_path"] = train_config["path"]["log_path"]+"_{}".format(train_tag)
-    train_config["path"]["result_path"] = train_config["path"]["result_path"]+"_{}".format(args.model)
+    path_tag = "_{}".format(args.path_tag) if args.path_tag != "" else args.path_tag
+    train_config["path"]["ckpt_path"] = train_config["path"]["ckpt_path"]+"_{}{}".format(train_tag, path_tag)
+    train_config["path"]["log_path"] = train_config["path"]["log_path"]+"_{}{}".format(train_tag, path_tag)
+    train_config["path"]["result_path"] = train_config["path"]["result_path"]+"_{}{}".format(args.model, path_tag)
     if preprocess_config["preprocessing"]["pitch"]["pitch_type"] == 'cwt':
         from utils.pitch_utils import get_lf0_cwt
         preprocess_config["preprocessing"]["pitch"]["cwt_scales"] = get_lf0_cwt(np.ones(10))[1]
