@@ -11,36 +11,34 @@ from dataset import Dataset
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def synthesize(model, step, configs, loader):
+def predict(model, step, configs, loader, len_dataset):
     preprocess_config, model_config, train_config = configs
 
     num_timesteps = int(model_config["denoiser"]["timesteps"])
-    n = 0
     kld_T = 0
     kld_ts = [0] * (num_timesteps+1)
 
     for batchs in tqdm(loader):
         for batch in batchs:
-            n += 1
             batch = to_device(batch, device)
             with torch.no_grad():
                 # Forward
                 target_mel = batch[6]
                 teacher_forced_mel = model(*(batch[2:]))[0][0]
-                kld_T += model.diffusion.expected_kld_T(teacher_forced_mel)
+                kld_T += model.diffusion.expected_kld_T(teacher_forced_mel) * len(batch[0])
 
                 for t in range(1, num_timesteps+1):
                     kld_t = model.diffusion.expected_kld_t(teacher_forced_mel, target_mel, t)
-                    kld_ts[t] += kld_t
+                    kld_ts[t] += kld_t * len(batch[0])
 
-    kld_T = kld_T / n
-    kld_ts = [kld_t / n for kld_t in kld_ts[1:]]
+    kld_T = kld_T / len_dataset
+    kld_ts = [kld_t / len_dataset for kld_t in kld_ts[1:]]
 
-    K = 1
+    K = 0
     for kld_t in kld_ts:
+        K += 1
         if kld_t <= kld_T:
             break
-        K += 1
 
     print("\nPredicted Boundary K is", K)
 
@@ -69,6 +67,10 @@ if __name__ == "__main__":
     train_config["path"]["ckpt_path"] = train_config["path"]["ckpt_path"]+"_{}".format("shallow")
     train_config["path"]["log_path"] = train_config["path"]["log_path"]+"_{}".format("shallow")
     train_config["path"]["result_path"] = train_config["path"]["result_path"]+"_{}".format("aux")
+    if preprocess_config["preprocessing"]["pitch"]["pitch_type"] == 'cwt':
+        import numpy as np
+        from utils.pitch_utils import get_lf0_cwt
+        preprocess_config["preprocessing"]["pitch"]["cwt_scales"] = get_lf0_cwt(np.ones(10))[1]
 
     # Log Configuration
     print("\n==================================== Prediction Configuration ====================================")
@@ -91,4 +93,4 @@ if __name__ == "__main__":
         collate_fn=dataset.collate_fn,
     )
 
-    synthesize(model, args.restore_step, configs, loader)
+    predict(model, args.restore_step, configs, loader, len(dataset))

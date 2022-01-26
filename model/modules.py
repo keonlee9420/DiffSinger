@@ -428,12 +428,14 @@ class VarianceAdaptor(nn.Module):
             mean = f0_mean = stats_out[:, 0]
             std = f0_std = stats_out[:, 1]
             cwt_spec = cwt_out[:, :, :10]
-            # if f0 is None:
-            #     std = std * self.cwt_std_scale
-            #     f0 = self.cwt2f0_norm(cwt_spec, mean, std, mel2ph)
-            #     if hparams['use_uv']:
-            #         assert cwt_out.shape[-1] == 11
-            #         uv = cwt_out[:, :, -1] > 0
+            if f0 is None:
+                std = std * self.cwt_std_scale
+                f0 = cwt2f0_norm(
+                    cwt_spec, mean, std, mel2ph, self.preprocess_config["preprocessing"]["pitch"],
+                )
+                if self.use_uv:
+                    assert cwt_out.shape[-1] == 11
+                    uv = cwt_out[:, :, -1] > 0
         # elif hparams['pitch_ar']:
         #     pitch_pred = self.pitch_predictor(decoder_inp, f0 if self.training else None)
         #     if f0 is None:
@@ -516,16 +518,21 @@ class VarianceAdaptor(nn.Module):
         output_2 = x.clone()
         if self.use_pitch_embed: # and self.pitch_type in ["frame", "cwt"]:
             if self.pitch_type == 'cwt':
-                cwt_spec = pitch_target[f'cwt_spec']
-                f0_mean = pitch_target['f0_mean']
-                f0_std = pitch_target['f0_std']
-                pitch_target["f0"] = cwt2f0_norm(
-                    cwt_spec, f0_mean, f0_std, mel2ph, self.preprocess_config["preprocessing"]["pitch"],
-                )
-                pitch_target.update({"f0_cwt": pitch_target["f0"]})
-            pitch_prediction, pitch_embedding = self.get_pitch_embedding(
-                x, pitch_target["f0"], pitch_target["uv"], mel2ph, encoder_out=output_1
-            )
+                if self.training:
+                    cwt_spec = pitch_target[f'cwt_spec']
+                    f0_mean = pitch_target['f0_mean']
+                    f0_std = pitch_target['f0_std']
+                    pitch_target["f0"] = cwt2f0_norm(
+                        cwt_spec, f0_mean, f0_std, mel2ph, self.preprocess_config["preprocessing"]["pitch"],
+                    )
+                    pitch_target.update({"f0_cwt": pitch_target["f0"]})
+                    pitch_prediction, pitch_embedding = self.get_pitch_embedding(
+                        x, pitch_target["f0"], pitch_target["uv"], mel2ph, encoder_out=output_1
+                    )
+                else:
+                    pitch_prediction, pitch_embedding = self.get_pitch_embedding(
+                        x, None, None, mel2ph, encoder_out=output_1
+                    )
             output_2 += pitch_embedding
         if self.use_energy_embed and self.energy_feature_level == "frame_level":
             energy_prediction, energy_embedding = self.get_energy_embedding(

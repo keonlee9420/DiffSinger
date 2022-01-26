@@ -33,10 +33,6 @@ class Dataset(Dataset):
         self.f0_mean = float(preprocess_config["preprocessing"]["pitch"]["f0_mean"])
         self.f0_std = float(preprocess_config["preprocessing"]["pitch"]["f0_std"])
 
-        if self.pitch_type == 'cwt':
-            _, self.cwt_scales = get_lf0_cwt(np.ones(10))
-            preprocess_config["preprocessing"]["pitch"]["cwt_scales"] = self.cwt_scales
-
     def __len__(self):
         return len(self.text)
 

@@ -250,31 +250,14 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
         mel_len = predictions[11][i].item()
         mel_prediction = predictions[0][i, :mel_len].detach().transpose(0, 1)
         duration = predictions[7][i, :src_len].detach().cpu().numpy()
-        if preprocess_config["preprocessing"]["pitch"]["feature"] == "phoneme_level":
-            pitch = predictions[4][i, :src_len].detach().cpu().numpy()
-            pitch = expand(pitch, duration)
-        else:
-            pitch = predictions[4][i, :mel_len].detach().cpu().numpy()
-        if preprocess_config["preprocessing"]["energy"]["feature"] == "phoneme_level":
-            energy = predictions[5][i, :src_len].detach().cpu().numpy()
-            energy = expand(energy, duration)
-        else:
-            energy = predictions[5][i, :mel_len].detach().cpu().numpy()
-
-        with open(
-            os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
-        ) as f:
-            stats = json.load(f)
-            stats = stats["pitch"] + stats["energy"][:2]
 
         fig_save_dir = os.path.join(
             path, str(args.restore_step), "{}_{}{}.png".format(basename, args.speaker_id, teacher_forced_tag)\
                 if multi_speaker and args.mode == "single" else "{}{}.png".format(basename, teacher_forced_tag))
         fig = plot_mel(
             [
-                (mel_prediction.cpu().numpy(), pitch, energy),
+                mel_prediction.cpu().numpy(),
             ],
-            stats,
             ["Synthetized Spectrogram"],
         )
         plt.savefig(fig_save_dir)
