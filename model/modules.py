@@ -364,14 +364,13 @@ class VarianceAdaptor(nn.Module):
                     nn.Linear(h, h), nn.ReLU(), nn.Linear(h, 2)
                 )
             else:
-                # self.pitch_predictor = PitchPredictor(
-                #     self.hidden_size,
-                #     n_chans=self.filter_size,
-                #     n_layers=self.predictor_layers,
-                #     dropout_rate=self.dropout,
-                #     odim=2 if self.pitch_type == 'frame' else 1,
-                #     padding=self.ffn_padding, kernel_size=self.kernel)
-                raise NotImplementedError
+                self.pitch_predictor = PitchPredictor(
+                    self.hidden_size,
+                    n_chans=self.filter_size,
+                    n_layers=self.predictor_layers,
+                    dropout_rate=self.dropout,
+                    odim=2 if self.pitch_type == 'frame' else 1,
+                    padding=self.ffn_padding, kernel_size=self.kernel)
 
         if self.use_energy_embed:
             self.energy_feature_level = preprocess_config["preprocessing"]["energy"][
@@ -406,57 +405,57 @@ class VarianceAdaptor(nn.Module):
 
     def get_pitch_embedding(self, decoder_inp, f0, uv, mel2ph, encoder_out=None):
         pitch_pred = f0_denorm = cwt = f0_mean = f0_std = None
-        # if hparams['pitch_type'] == 'ph':
-        #     pitch_pred_inp = encoder_out.detach() + self.predictor_grad * (encoder_out - encoder_out.detach())
-        #     pitch_padding = encoder_out.sum().abs() == 0
-        #     pitch_pred = self.pitch_predictor(pitch_pred_inp)
-        #     if f0 is None:
-        #         f0 = pitch_pred[:, :, 0]
-        #     f0_denorm = denorm_f0(f0, None, hparams, pitch_padding=pitch_padding)
-        #     pitch = f0_to_coarse(f0_denorm)  # start from 0 [B, T_txt]
-        #     pitch = F.pad(pitch, [1, 0])
-        #     pitch = torch.gather(pitch, 1, mel2ph)  # [B, T_mel]
-        #     pitch_embed = self.pitch_embed(pitch)
-        #     return pitch_embed
-        decoder_inp = decoder_inp.detach() + self.predictor_grad * (decoder_inp - decoder_inp.detach())
-        pitch_padding = mel2ph == 0
-
-        if self.pitch_type == 'cwt':
-            pitch_padding = None
-            cwt = cwt_out = self.cwt_predictor(decoder_inp)
-            stats_out = self.cwt_stats_layers(encoder_out[:, 0, :])  # [B, 2]
-            mean = f0_mean = stats_out[:, 0]
-            std = f0_std = stats_out[:, 1]
-            cwt_spec = cwt_out[:, :, :10]
+        if self.pitch_type == 'ph':
+            pitch_pred_inp = encoder_out.detach() + self.predictor_grad * (encoder_out - encoder_out.detach())
+            pitch_padding = encoder_out.sum().abs() == 0
+            pitch_pred = self.pitch_predictor(pitch_pred_inp)
             if f0 is None:
-                std = std * self.cwt_std_scale
-                f0 = cwt2f0_norm(
-                    cwt_spec, mean, std, mel2ph, self.preprocess_config["preprocessing"]["pitch"],
-                )
-                if self.use_uv:
-                    assert cwt_out.shape[-1] == 11
-                    uv = cwt_out[:, :, -1] > 0
-        # elif hparams['pitch_ar']:
-        #     pitch_pred = self.pitch_predictor(decoder_inp, f0 if self.training else None)
-        #     if f0 is None:
-        #         f0 = pitch_pred[:, :, 0]
-        # else:
-        #     pitch_pred = self.pitch_predictor(decoder_inp)
-        #     if f0 is None:
-        #         f0 = pitch_pred[:, :, 0]
-        #     if hparams['use_uv'] and uv is None:
-        #         uv = pitch_pred[:, :, 1] > 0
+                f0 = pitch_pred[:, :, 0]
+            f0_denorm = denorm_f0(f0, None, self.preprocess_config["preprocessing"]["pitch"], pitch_padding=pitch_padding)
+            pitch = f0_to_coarse(f0_denorm)  # start from 0 [B, T_txt]
+            pitch = F.pad(pitch, [1, 0])
+            pitch = torch.gather(pitch, 1, mel2ph)  # [B, T_mel]
+            pitch_embed = self.pitch_embed(pitch)
         else:
-            raise NotImplementedError
-        f0_denorm = denorm_f0(f0, uv, self.preprocess_config["preprocessing"]["pitch"], pitch_padding=pitch_padding)
-        if pitch_padding is not None:
-            f0[pitch_padding] = 0
+            decoder_inp = decoder_inp.detach() + self.predictor_grad * (decoder_inp - decoder_inp.detach())
+            pitch_padding = mel2ph == 0
 
-        pitch = f0_to_coarse(f0_denorm)  # start from 0
-        pitch_embed = self.pitch_embed(pitch)
+            if self.pitch_type == 'cwt':
+                pitch_padding = None
+                cwt = cwt_out = self.cwt_predictor(decoder_inp)
+                stats_out = self.cwt_stats_layers(encoder_out[:, 0, :])  # [B, 2]
+                mean = f0_mean = stats_out[:, 0]
+                std = f0_std = stats_out[:, 1]
+                cwt_spec = cwt_out[:, :, :10]
+                if f0 is None:
+                    std = std * self.cwt_std_scale
+                    f0 = cwt2f0_norm(
+                        cwt_spec, mean, std, mel2ph, self.preprocess_config["preprocessing"]["pitch"],
+                    )
+                    if self.use_uv:
+                        assert cwt_out.shape[-1] == 11
+                        uv = cwt_out[:, :, -1] > 0
+            # elif hparams['pitch_ar']:
+            #     pitch_pred = self.pitch_predictor(decoder_inp, f0 if self.training else None)
+            #     if f0 is None:
+            #         f0 = pitch_pred[:, :, 0]
+            # else:
+            #     pitch_pred = self.pitch_predictor(decoder_inp)
+            #     if f0 is None:
+            #         f0 = pitch_pred[:, :, 0]
+            #     if hparams['use_uv'] and uv is None:
+            #         uv = pitch_pred[:, :, 1] > 0
+            else:
+                raise NotImplementedError
+            f0_denorm = denorm_f0(f0, uv, self.preprocess_config["preprocessing"]["pitch"], pitch_padding=pitch_padding)
+            if pitch_padding is not None:
+                f0[pitch_padding] = 0
+
+            pitch = f0_to_coarse(f0_denorm)  # start from 0
+            pitch_embed = self.pitch_embed(pitch)
 
         pitch_pred = {
-            "pitch_pred:": pitch_pred,
+            "pitch_pred": pitch_pred,
             "f0_denorm": f0_denorm,
             "cwt": cwt,
             "f0_mean": f0_mean,
@@ -517,8 +516,8 @@ class VarianceAdaptor(nn.Module):
 
         output_2 = x.clone()
         if self.use_pitch_embed: # and self.pitch_type in ["frame", "cwt"]:
-            if self.pitch_type == 'cwt':
-                if pitch_target is not None:
+            if pitch_target is not None:
+                if self.pitch_type == 'cwt':
                     cwt_spec = pitch_target[f'cwt_spec']
                     f0_mean = pitch_target['f0_mean']
                     f0_std = pitch_target['f0_std']
@@ -526,13 +525,13 @@ class VarianceAdaptor(nn.Module):
                         cwt_spec, f0_mean, f0_std, mel2ph, self.preprocess_config["preprocessing"]["pitch"],
                     )
                     pitch_target.update({"f0_cwt": pitch_target["f0"]})
-                    pitch_prediction, pitch_embedding = self.get_pitch_embedding(
-                        x, pitch_target["f0"], pitch_target["uv"], mel2ph, encoder_out=output_1
-                    )
-                else:
-                    pitch_prediction, pitch_embedding = self.get_pitch_embedding(
-                        x, None, None, mel2ph, encoder_out=output_1
-                    )
+                pitch_prediction, pitch_embedding = self.get_pitch_embedding(
+                    x, pitch_target["f0"], pitch_target["uv"], mel2ph, encoder_out=output_1
+                )
+            else:
+                pitch_prediction, pitch_embedding = self.get_pitch_embedding(
+                    x, None, None, mel2ph, encoder_out=output_1
+                )
             output_2 += pitch_embedding
         if self.use_energy_embed and self.energy_feature_level == "frame_level":
             energy_prediction, energy_embedding = self.get_energy_embedding(

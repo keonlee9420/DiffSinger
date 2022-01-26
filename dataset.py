@@ -2,6 +2,7 @@ import json
 import math
 import os
 
+import torch
 import numpy as np
 from torch.utils.data import Dataset
 
@@ -80,7 +81,7 @@ class Dataset(Dataset):
         )
         mel2ph = np.load(mel2ph_path)
 
-        cwt_spec = f0_mean = f0_std = None
+        cwt_spec = f0_mean = f0_std = f0_ph = None
         if self.pitch_type == 'cwt':
             cwt_spec_path = os.path.join(
                 self.preprocessed_path,
@@ -95,11 +96,12 @@ class Dataset(Dataset):
             )
             f0cwt_mean_std = np.load(f0cwt_mean_std_path)
             f0_mean, f0_std = float(f0cwt_mean_std[0]), float(f0cwt_mean_std[1])
-        # elif self.pitch_type == 'ph':
-        #     f0_phlevel_sum = torch.zeros_like(phone).float().scatter_add(0, mel2ph - 1, f0)
-        #     f0_phlevel_num = torch.zeros_like(phone).float().scatter_add(
-        #         0, mel2ph - 1, torch.ones_like(f0)).clamp_min(1)
-        #     f0_ph = f0_phlevel_sum / f0_phlevel_num
+        elif self.pitch_type == 'ph':
+            f0_phlevel_sum = torch.zeros(phone.shape).float().scatter_add(
+                0, torch.from_numpy(mel2ph).long() - 1, torch.from_numpy(f0).float())
+            f0_phlevel_num = torch.zeros(phone.shape).float().scatter_add(
+                0, torch.from_numpy(mel2ph).long() - 1, torch.ones(f0.shape)).clamp_min(1)
+            f0_ph = (f0_phlevel_sum / f0_phlevel_num).numpy()
 
         sample = {
             "id": basename,
@@ -109,6 +111,7 @@ class Dataset(Dataset):
             "mel": mel,
             "pitch": pitch,
             "f0": f0,
+            "f0_ph": f0_ph,
             "uv": uv,
             "cwt_spec": cwt_spec,
             "f0_mean": f0_mean,
@@ -145,7 +148,7 @@ class Dataset(Dataset):
         pitches = [data[idx]["pitch"] for idx in idxs]
         f0s = [data[idx]["f0"] for idx in idxs]
         uvs = [data[idx]["uv"] for idx in idxs]
-        cwt_specs = f0_means = f0_stds = None
+        cwt_specs = f0_means = f0_stds = f0_phs = None
         if self.pitch_type == 'cwt':
             cwt_specs = [data[idx]["cwt_spec"] for idx in idxs]
             f0_means = [data[idx]["f0_mean"] for idx in idxs]
@@ -153,8 +156,8 @@ class Dataset(Dataset):
             cwt_specs = pad_2D(cwt_specs)
             f0_means = np.array(f0_means)
             f0_stds = np.array(f0_stds)
-        # elif self.pitch_type == 'ph':
-        #     batch['f0'] = utils.collate_1d([s['f0_ph'] for s in samples])
+        elif self.pitch_type == 'ph':
+            f0s = [data[idx]["f0_ph"] for idx in idxs]
         energies = [data[idx]["energy"] for idx in idxs]
         durations = [data[idx]["duration"] for idx in idxs]
         mel2phs = [data[idx]["mel2ph"] for idx in idxs]

@@ -5,6 +5,7 @@ import librosa
 import parselmouth
 import numpy as np
 import torch
+import torch.nn.functional as F
 from pycwt import wavelet
 from scipy.interpolate import interp1d
 
@@ -117,6 +118,13 @@ def get_pitch(wav_data, mel, config):
     f0 = f0[:len(mel)]
     pitch_coarse = f0_to_coarse(f0)
     return f0, pitch_coarse
+
+
+def expand_f0_ph(f0, mel2ph, config):
+    f0 = denorm_f0(f0, None, config)
+    f0 = F.pad(f0, [1, 0])
+    f0 = torch.gather(f0, 1, mel2ph)  # [B, T_mel]
+    return f0
 
 
 #########

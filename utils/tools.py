@@ -12,7 +12,7 @@ from scipy.io import wavfile
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 
-from utils.pitch_utils import denorm_f0, cwt2f0
+from utils.pitch_utils import denorm_f0, expand_f0_ph, cwt2f0
 
 
 matplotlib.use("Agg")
@@ -165,28 +165,33 @@ def synth_one_sample(args, targets, predictions, vocoder, model_config, preproce
     if use_pitch_embed:
         pitch_prediction, pitch_target = predictions[4], targets[9]
         f0 = pitch_target['f0']
-        # if hparams['pitch_type'] == 'ph':
-        #     mel2ph = sample['mel2ph']
-        #     f0 = self.expand_f0_ph(f0, mel2ph)
-        #     f0_pred = self.expand_f0_ph(model_out['pitch_pred'][:, :, 0], mel2ph)
-        #     self.logger.experiment.add_figure(
-        #         f'f0_{batch_idx}', f0_to_figure(f0[0], None, f0_pred[0]), self.global_step)
-        #     return
-        f0 = denorm_f0(f0, pitch_target['uv'], pitch_config)
-        if pitch_type == 'cwt':
-            # cwt
-            cwt_out = pitch_prediction['cwt']
-            cwt_spec = cwt_out[:, :, :10]
-            cwt = torch.cat([cwt_spec, pitch_target['cwt_spec']], -1)
-            figs["cwt"] = spec_to_figure(cwt[0, :mel_len])
-            # f0
-            f0_pred = cwt2f0(cwt_spec, pitch_prediction['f0_mean'], pitch_prediction['f0_std'], pitch_config['cwt_scales'])
-            if pitch_config['use_uv']:
-                assert cwt_out.shape[-1] == 11
-                uv_pred = cwt_out[:, :, -1] > 0
-                f0_pred[uv_pred > 0] = 0
-            f0_cwt = denorm_f0(pitch_target['f0_cwt'], pitch_target['uv'], pitch_config)
-            figs["f0"] = f0_to_figure(f0[0, :mel_len], f0_cwt[0, :mel_len], f0_pred[0, :mel_len])
+        if pitch_type == 'ph':
+            mel2ph = targets[12]
+            f0 = expand_f0_ph(f0, mel2ph, pitch_config)
+            f0_pred = expand_f0_ph(pitch_prediction['pitch_pred'][:, :, 0], mel2ph, pitch_config)
+            figs["f0"] = f0_to_figure(f0[0, :mel_len], None, f0_pred[0, :mel_len])
+        else:
+            f0 = denorm_f0(f0, pitch_target['uv'], pitch_config)
+            if pitch_type == 'cwt':
+                # cwt
+                cwt_out = pitch_prediction['cwt']
+                cwt_spec = cwt_out[:, :, :10]
+                cwt = torch.cat([cwt_spec, pitch_target['cwt_spec']], -1)
+                figs["cwt"] = spec_to_figure(cwt[0, :mel_len])
+                # f0
+                f0_pred = cwt2f0(cwt_spec, pitch_prediction['f0_mean'], pitch_prediction['f0_std'], pitch_config['cwt_scales'])
+                if pitch_config['use_uv']:
+                    assert cwt_out.shape[-1] == 11
+                    uv_pred = cwt_out[:, :, -1] > 0
+                    f0_pred[uv_pred > 0] = 0
+                f0_cwt = denorm_f0(pitch_target['f0_cwt'], pitch_target['uv'], pitch_config)
+                figs["f0"] = f0_to_figure(f0[0, :mel_len], f0_cwt[0, :mel_len], f0_pred[0, :mel_len])
+            # elif hparams['pitch_type'] == 'frame':
+            #     # f0
+            #     uv_pred = model_out['pitch_pred'][:, :, 1] > 0
+            #     pitch_pred = denorm_f0(model_out['pitch_pred'][:, :, 0], uv_pred, hparams)
+            #     self.logger.experiment.add_figure(
+            #         f'f0_{batch_idx}', f0_to_figure(f0[0], None, pitch_pred[0]), self.global_step)
     if use_energy_embed:
         if preprocess_config["preprocessing"]["energy"]["feature"] == "phoneme_level":
             energy_prediction = predictions[5][0, :src_len].detach().cpu().numpy()

@@ -123,42 +123,41 @@ class DiffSingerLoss(nn.Module):
         return duration_loss
 
     def get_pitch_loss(self, pitch_predictions, pitch_targets):
-    # def get_pitch_loss(self, output, sample, losses):
         losses = {}
         for _, pitch_target in pitch_targets.items():
             if pitch_target is not None:
                 pitch_target.requires_grad = False
-        # if hparams['pitch_type'] == 'ph':
-        #     nonpadding = (sample['txt_tokens'] != 0).float()
-        #     pitch_loss_fn = F.l1_loss if hparams['pitch_loss'] == 'l1' else F.mse_loss
-        #     losses['f0'] = (pitch_loss_fn(output['pitch_pred'][:, :, 0], sample['f0'],
-        #                                   reduction='none') * nonpadding).sum() \
-        #                    / nonpadding.sum() * hparams['lambda_f0']
-        #     return
-        mel2ph = self.mel2phs  # [B, T_s]
-        f0 = pitch_targets['f0']
-        uv = pitch_targets['uv']
-        nonpadding = (mel2ph != 0).float()
-        if self.pitch_type == 'cwt':
-            cwt_spec = pitch_targets[f'cwt_spec']
-            f0_mean = pitch_targets['f0_mean']
-            f0_std = pitch_targets['f0_std']
-            cwt_pred = pitch_predictions['cwt'][:, :, :10]
-            f0_mean_pred = pitch_predictions['f0_mean']
-            f0_std_pred = pitch_predictions['f0_std']
-            losses['C'] = self.cwt_loss(cwt_pred, cwt_spec) * self.loss_config['lambda_f0']
-            if self.pitch_config['use_uv']:
-                assert pitch_predictions['cwt'].shape[-1] == 11
-                uv_pred = pitch_predictions['cwt'][:, :, -1]
-                losses['uv'] = (F.binary_cross_entropy_with_logits(uv_pred, uv, reduction='none') * nonpadding) \
-                                   .sum() / nonpadding.sum() * self.loss_config['lambda_uv']
-            losses['f0_mean'] = F.l1_loss(f0_mean_pred, f0_mean) * self.loss_config['lambda_f0']
-            losses['f0_std'] = F.l1_loss(f0_std_pred, f0_std) * self.loss_config['lambda_f0']
-            # if self.loss_config['cwt_add_f0_loss']:
-            #     f0_cwt_ = cwt2f0_norm(cwt_pred, f0_mean_pred, f0_std_pred, mel2ph, self.pitch_config)
-            #     self.add_f0_loss(f0_cwt_[:, :, None], f0, uv, losses, nonpadding=nonpadding)
-        # elif hparams['pitch_type'] == 'frame':
-        #     self.add_f0_loss(output['pitch_pred'], f0, uv, losses, nonpadding=nonpadding)
+        if self.pitch_type == 'ph':
+            nonpadding = self.src_masks.float()
+            pitch_loss_fn = F.l1_loss if self.loss_config['pitch_loss'] == 'l1' else F.mse_loss
+            losses['f0'] = (pitch_loss_fn(pitch_predictions['pitch_pred'][:, :, 0], pitch_targets['f0'],
+                                          reduction='none') * nonpadding).sum() \
+                           / nonpadding.sum() * self.loss_config['lambda_f0']
+        else:
+            mel2ph = self.mel2phs  # [B, T_s]
+            f0 = pitch_targets['f0']
+            uv = pitch_targets['uv']
+            nonpadding = (mel2ph != 0).float()
+            if self.pitch_type == 'cwt':
+                cwt_spec = pitch_targets[f'cwt_spec']
+                f0_mean = pitch_targets['f0_mean']
+                f0_std = pitch_targets['f0_std']
+                cwt_pred = pitch_predictions['cwt'][:, :, :10]
+                f0_mean_pred = pitch_predictions['f0_mean']
+                f0_std_pred = pitch_predictions['f0_std']
+                losses['C'] = self.cwt_loss(cwt_pred, cwt_spec) * self.loss_config['lambda_f0']
+                if self.pitch_config['use_uv']:
+                    assert pitch_predictions['cwt'].shape[-1] == 11
+                    uv_pred = pitch_predictions['cwt'][:, :, -1]
+                    losses['uv'] = (F.binary_cross_entropy_with_logits(uv_pred, uv, reduction='none') * nonpadding) \
+                                    .sum() / nonpadding.sum() * self.loss_config['lambda_uv']
+                losses['f0_mean'] = F.l1_loss(f0_mean_pred, f0_mean) * self.loss_config['lambda_f0']
+                losses['f0_std'] = F.l1_loss(f0_std_pred, f0_std) * self.loss_config['lambda_f0']
+                # if self.loss_config['cwt_add_f0_loss']:
+                #     f0_cwt_ = cwt2f0_norm(cwt_pred, f0_mean_pred, f0_std_pred, mel2ph, self.pitch_config)
+                #     self.add_f0_loss(f0_cwt_[:, :, None], f0, uv, losses, nonpadding=nonpadding)
+            # elif hparams['pitch_type'] == 'frame':
+            #     self.add_f0_loss(output['pitch_pred'], f0, uv, losses, nonpadding=nonpadding)
         return losses
 
     # def add_f0_loss(self, p_pred, f0, uv, losses, nonpadding):
