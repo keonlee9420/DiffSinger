@@ -518,7 +518,7 @@ class VarianceAdaptor(nn.Module):
         output_2 = x.clone()
         if self.use_pitch_embed: # and self.pitch_type in ["frame", "cwt"]:
             if self.pitch_type == 'cwt':
-                if self.training:
+                if pitch_target is not None:
                     cwt_spec = pitch_target[f'cwt_spec']
                     f0_mean = pitch_target['f0_mean']
                     f0_std = pitch_target['f0_std']
