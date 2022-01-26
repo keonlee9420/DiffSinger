@@ -115,7 +115,8 @@ def log(
         for k, v in losses[3].items():
             logger.add_scalar("Loss/{}_loss".format(k), v, step)
         logger.add_scalar("Loss/energy_loss", losses[4], step)
-        logger.add_scalar("Loss/duration_loss", losses[5], step)
+        for k, v in losses[5].items():
+            logger.add_scalar("Loss/{}_loss".format(k), v, step)
 
     if lr is not None:
         logger.add_scalar("Training/learning_rate", lr, step)
