@@ -435,18 +435,17 @@ class VarianceAdaptor(nn.Module):
                     if self.use_uv:
                         assert cwt_out.shape[-1] == 11
                         uv = cwt_out[:, :, -1] > 0
-            # elif hparams['pitch_ar']:
-            #     pitch_pred = self.pitch_predictor(decoder_inp, f0 if self.training else None)
-            #     if f0 is None:
-            #         f0 = pitch_pred[:, :, 0]
-            # else:
-            #     pitch_pred = self.pitch_predictor(decoder_inp)
-            #     if f0 is None:
-            #         f0 = pitch_pred[:, :, 0]
-            #     if hparams['use_uv'] and uv is None:
-            #         uv = pitch_pred[:, :, 1] > 0
+            elif self.preprocess_config["preprocessing"]["pitch"]['pitch_ar']:
+                pitch_pred = self.pitch_predictor(decoder_inp, f0 if self.training else None)
+                if f0 is None:
+                    f0 = pitch_pred[:, :, 0]
             else:
-                raise NotImplementedError
+                pitch_pred = self.pitch_predictor(decoder_inp)
+                if f0 is None:
+                    f0 = pitch_pred[:, :, 0]
+                if self.use_uv and uv is None:
+                    uv = pitch_pred[:, :, 1] > 0
+
             f0_denorm = denorm_f0(f0, uv, self.preprocess_config["preprocessing"]["pitch"], pitch_padding=pitch_padding)
             if pitch_padding is not None:
                 f0[pitch_padding] = 0

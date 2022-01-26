@@ -26,6 +26,7 @@ preprocessing:
     pitch_type: "cwt" # frame|ph|cwt
     pitch_norm: "log" # standard|log
     pitch_norm_eps: 0.000000001
+    pitch_ar: False
     with_f0: True
     with_f0cwt: True
     use_uv: True

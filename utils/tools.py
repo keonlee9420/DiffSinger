@@ -186,12 +186,11 @@ def synth_one_sample(args, targets, predictions, vocoder, model_config, preproce
                     f0_pred[uv_pred > 0] = 0
                 f0_cwt = denorm_f0(pitch_target['f0_cwt'], pitch_target['uv'], pitch_config)
                 figs["f0"] = f0_to_figure(f0[0, :mel_len], f0_cwt[0, :mel_len], f0_pred[0, :mel_len])
-            # elif hparams['pitch_type'] == 'frame':
-            #     # f0
-            #     uv_pred = model_out['pitch_pred'][:, :, 1] > 0
-            #     pitch_pred = denorm_f0(model_out['pitch_pred'][:, :, 0], uv_pred, hparams)
-            #     self.logger.experiment.add_figure(
-            #         f'f0_{batch_idx}', f0_to_figure(f0[0], None, pitch_pred[0]), self.global_step)
+            elif pitch_type == 'frame':
+                # f0
+                uv_pred = pitch_prediction['pitch_pred'][:, :, 1] > 0
+                pitch_pred = denorm_f0(pitch_prediction['pitch_pred'][:, :, 0], uv_pred, pitch_config)
+                figs["f0"] = f0_to_figure(f0[0, :mel_len], None, pitch_pred[0, :mel_len])
     if use_energy_embed:
         if preprocess_config["preprocessing"]["energy"]["feature"] == "phoneme_level":
             energy_prediction = predictions[5][0, :src_len].detach().cpu().numpy()
