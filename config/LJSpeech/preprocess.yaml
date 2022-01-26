@@ -32,6 +32,7 @@ preprocessing:
     feature: "frame_level" # only support 'frame_level'
     f0_mean: 214.31683793057
     f0_std: 63.97520977575229
+    cwt_scales: -1
   energy:
     feature: "frame_level" # only support 'frame_level'
     normalization: True

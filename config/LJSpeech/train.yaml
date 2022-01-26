@@ -14,7 +14,12 @@ optimizer:
   anneal_rate: 0.5
   init_lr: 0.001
 loss:
-  loss_type: 'l1'
+  noise_loss: "l1"
+  pitch_loss: "l1"
+  cwt_loss: "l1"
+  lambda_f0: 1.0
+  lambda_uv: 1.0
+  # cwt_add_f0_loss: false
 step:
   total_step_aux: 160000
   total_step_naive: 160000

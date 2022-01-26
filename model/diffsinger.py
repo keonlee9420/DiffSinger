@@ -57,12 +57,7 @@ class DiffSinger(nn.Module):
         mels=None,
         mel_lens=None,
         max_mel_len=None,
-        pitches=None,
-        f0s=None,
-        uvs=None,
-        cwt_specs=None,
-        f0_means=None,
-        f0_stds=None,
+        p_targets=None,
         e_targets=None,
         d_targets=None,
         mel2phs=None,
@@ -85,14 +80,6 @@ class DiffSinger(nn.Module):
                 -1, max_src_len, -1
             )
 
-        p_targets = {
-            "pitche": pitches,
-            "f0": f0s,
-            "uv": uvs,
-            "cwt_spec": cwt_specs,
-            "f0_mean": f0_means,
-            "f0_std": f0_stds,
-        }
         (
             output,
             p_predictions,
@@ -145,7 +132,7 @@ class DiffSinger(nn.Module):
                 )
         else:
             raise NotImplementedError
-        exit(0)
+
         return (
             output,
             epsilon_predictions,
@@ -159,4 +146,4 @@ class DiffSinger(nn.Module):
             mel_masks,
             src_lens,
             mel_lens,
-        )
+        ), p_targets

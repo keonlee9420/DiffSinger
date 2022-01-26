@@ -1,14 +1,18 @@
 import os
 import json
 import yaml
+from math import exp
 
 import torch
 import torch.nn.functional as F
+from torch.autograd import Variable
 import numpy as np
 import matplotlib
 from scipy.io import wavfile
 from matplotlib import pyplot as plt
 from tqdm import tqdm
+
+from utils.pitch_utils import denorm_f0, cwt2f0
 
 
 matplotlib.use("Agg")
@@ -66,7 +70,16 @@ def to_device(data, device):
         durations = torch.from_numpy(durations).long().to(device)
         mel2phs = torch.from_numpy(mel2phs).long().to(device)
 
-        return (
+        pitch_data = {
+            "pitch": pitches,
+            "f0": f0s,
+            "uv": uvs,
+            "cwt_spec": cwt_specs,
+            "f0_mean": f0_means,
+            "f0_std": f0_stds,
+        }
+
+        return [
             ids,
             raw_texts,
             speakers,
@@ -76,16 +89,11 @@ def to_device(data, device):
             mels,
             mel_lens,
             max_mel_len,
-            pitches,
-            f0s,
-            uvs,
-            cwt_specs,
-            f0_means,
-            f0_stds,
+            pitch_data,
             energies,
             durations,
             mel2phs,
-        )
+        ]
 
     if len(data) == 6:
         (ids, raw_texts, speakers, texts, src_lens, max_src_len) = data
@@ -98,21 +106,23 @@ def to_device(data, device):
 
 
 def log(
-    logger, step=None, losses=None, lr=None, fig=None, audio=None, sampling_rate=22050, tag=""
+    logger, step=None, losses=None, lr=None, figs=None, audio=None, sampling_rate=22050, tag=""
 ):
     if losses is not None:
         logger.add_scalar("Loss/total_loss", losses[0], step)
         logger.add_scalar("Loss/mel_loss", losses[1], step)
         logger.add_scalar("Loss/noise_loss", losses[2], step)
-        logger.add_scalar("Loss/pitch_loss", losses[3], step)
+        for k, v in losses[3].items():
+            logger.add_scalar("Loss/{}_loss".format(k), v, step)
         logger.add_scalar("Loss/energy_loss", losses[4], step)
         logger.add_scalar("Loss/duration_loss", losses[5], step)
 
     if lr is not None:
         logger.add_scalar("Training/learning_rate", lr, step)
 
-    if fig is not None:
-        logger.add_figure(tag, fig)
+    if figs is not None:
+        for k, v in figs.items():
+            logger.add_figure("{}/{}".format(tag, k), v, step)
 
     if audio is not None:
         logger.add_audio(
@@ -142,33 +152,51 @@ def expand(values, durations):
 
 def synth_one_sample(args, targets, predictions, vocoder, model_config, preprocess_config, diffusion):
 
+    pitch_config = preprocess_config["preprocessing"]["pitch"]
+    pitch_type = pitch_config["pitch_type"]
+    use_pitch_embed = model_config["variance_embedding"]["use_pitch_embed"]
+    use_energy_embed = model_config["variance_embedding"]["use_energy_embed"]
     basename = targets[0][0]
     src_len = predictions[10][0].item()
     mel_len = predictions[11][0].item()
     mel_target = targets[6][0, :mel_len].float().detach().transpose(0, 1)
     duration = targets[11][0, :src_len].int().detach().cpu().numpy()
-    if preprocess_config["preprocessing"]["pitch"]["feature"] == "phoneme_level":
-        pitch_prediction = predictions[4][0, :src_len].detach().cpu().numpy()
-        pitch_prediction = expand(pitch_prediction, duration)
-        pitch_target = targets[9][0, :src_len].detach().cpu().numpy()
-        pitch_target = expand(pitch_target, duration)
-    else:
-        pitch_prediction = predictions[4][0, :mel_len].detach().cpu().numpy()
-        pitch_target = targets[9][0, :mel_len].detach().cpu().numpy()
-    if preprocess_config["preprocessing"]["energy"]["feature"] == "phoneme_level":
-        energy_prediction = predictions[5][0, :src_len].detach().cpu().numpy()
-        energy_prediction = expand(energy_prediction, duration)
-        energy_target = targets[10][0, :src_len].detach().cpu().numpy()
-        energy_target = expand(energy_target, duration)
-    else:
-        energy_prediction = predictions[5][0, :mel_len].detach().cpu().numpy()
-        energy_target = targets[10][0, :mel_len].detach().cpu().numpy()
-
-    with open(
-        os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
-    ) as f:
-        stats = json.load(f)
-        stats = stats["pitch"] + stats["energy"][:2]
+    figs = {}
+    if use_pitch_embed:
+        pitch_prediction, pitch_target = predictions[4], targets[9]
+        f0 = pitch_target['f0']
+        # if hparams['pitch_type'] == 'ph':
+        #     mel2ph = sample['mel2ph']
+        #     f0 = self.expand_f0_ph(f0, mel2ph)
+        #     f0_pred = self.expand_f0_ph(model_out['pitch_pred'][:, :, 0], mel2ph)
+        #     self.logger.experiment.add_figure(
+        #         f'f0_{batch_idx}', f0_to_figure(f0[0], None, f0_pred[0]), self.global_step)
+        #     return
+        f0 = denorm_f0(f0, pitch_target['uv'], pitch_config)
+        if pitch_type == 'cwt':
+            # cwt
+            cwt_out = pitch_prediction['cwt']
+            cwt_spec = cwt_out[:, :, :10]
+            cwt = torch.cat([cwt_spec, pitch_target['cwt_spec']], -1)
+            figs["cwt"] = spec_to_figure(cwt[0, :mel_len])
+            # f0
+            f0_pred = cwt2f0(cwt_spec, pitch_prediction['f0_mean'], pitch_prediction['f0_std'], pitch_config['cwt_scales'])
+            if pitch_config['use_uv']:
+                assert cwt_out.shape[-1] == 11
+                uv_pred = cwt_out[:, :, -1] > 0
+                f0_pred[uv_pred > 0] = 0
+            f0_cwt = denorm_f0(pitch_target['f0_cwt'], pitch_target['uv'], pitch_config)
+            figs["f0"] = f0_to_figure(f0[0, :mel_len], f0_cwt[0, :mel_len], f0_pred[0, :mel_len])
+    if use_energy_embed:
+        if preprocess_config["preprocessing"]["energy"]["feature"] == "phoneme_level":
+            energy_prediction = predictions[5][0, :src_len].detach().cpu().numpy()
+            energy_prediction = expand(energy_prediction, duration)
+            energy_target = targets[10][0, :src_len].detach().cpu().numpy()
+            energy_target = expand(energy_target, duration)
+        else:
+            energy_prediction = predictions[5][0, :mel_len].detach().cpu().numpy()
+            energy_target = targets[10][0, :mel_len].detach().cpu().numpy()
+        figs["energy"] = energy_to_figure(energy_target, energy_prediction)
 
     if args.model == "aux":
         mel_prediction = predictions[0][0, :mel_len].float().detach().transpose(0, 1)
@@ -179,14 +207,13 @@ def synth_one_sample(args, targets, predictions, vocoder, model_config, preproce
         mel_prediction = diffusion.sampling()[0, :mel_len].detach().transpose(0, 1)
         diffusion.aux_mel = None
 
-    fig = plot_mel(
+    figs["mel"] = plot_mel(
         [
-            # (noisy_mels.cpu().numpy(), pitch_target, energy_target),
-            # (noise_prediction.cpu().numpy(), None, None),
-            (mel_prediction.cpu().numpy(), pitch_prediction, energy_prediction),
-            (mel_target.cpu().numpy(), pitch_target, energy_target),
+            # noisy_mels.cpu().numpy(),
+            # noise_prediction.cpu().numpy(),
+            mel_prediction.cpu().numpy(),
+            mel_target.cpu().numpy(),
         ],
-        stats,
         # [f"Diffused Spectrogram at {diffusion_step}-step", f"Epsilon Prediction from {diffusion_step}-step", "Sampled Spectrogram", "Ground-Truth Spectrogram"],
         ["Sampled Spectrogram", "Ground-Truth Spectrogram"],
     )
@@ -209,7 +236,7 @@ def synth_one_sample(args, targets, predictions, vocoder, model_config, preproce
     else:
         wav_reconstruction = wav_prediction = None
 
-    return fig, wav_reconstruction, wav_prediction, basename
+    return figs, wav_reconstruction, wav_prediction, basename
 
 
 def synth_samples(targets, predictions, vocoder, model_config, preprocess_config, path, args):
@@ -269,22 +296,16 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
             sampling_rate, wav)
 
 
-def plot_mel(data, stats, titles):
+def plot_mel(data, titles=None):
     fig, axes = plt.subplots(len(data), 1, squeeze=False)
     if titles is None:
         titles = [None for i in range(len(data))]
-    pitch_min, pitch_max, pitch_mean, pitch_std, energy_min, energy_max = stats
-    pitch_min = pitch_min * pitch_std + pitch_mean
-    pitch_max = pitch_max * pitch_std + pitch_mean
     plt.tight_layout()
 
-    def add_axis(fig, old_ax):
-        ax = fig.add_axes(old_ax.get_position(), anchor="W")
-        ax.set_facecolor("None")
-        return ax
-
     for i in range(len(data)):
-        mel, pitch, energy = data[i]
+        mel = data[i]
+        if isinstance(mel, torch.Tensor):
+            mel = mel.detach().cpu().numpy()
         axes[i][0].imshow(mel, origin="lower")
         axes[i][0].set_aspect(2.5, adjustable="box")
         axes[i][0].set_ylim(0, mel.shape[0])
@@ -292,35 +313,44 @@ def plot_mel(data, stats, titles):
         axes[i][0].tick_params(labelsize="x-small", left=False, labelleft=False)
         axes[i][0].set_anchor("W")
 
-        if pitch is not None:
-            pitch = pitch * pitch_std + pitch_mean
-            ax1 = add_axis(fig, axes[i][0])
-            ax1.plot(pitch, color="tomato", linewidth=.7)
-            ax1.set_xlim(0, mel.shape[1])
-            ax1.set_ylim(0, pitch_max)
-            ax1.set_ylabel("F0", color="tomato")
-            ax1.tick_params(
-                labelsize="x-small", colors="tomato", bottom=False, labelbottom=False
-            )
+    return fig
 
-        if energy is not None:
-            ax2 = add_axis(fig, axes[i][0])
-            ax2.plot(energy, color="darkviolet", linewidth=.7)
-            ax2.set_xlim(0, mel.shape[1])
-            ax2.set_ylim(energy_min, energy_max)
-            ax2.set_ylabel("Energy", color="darkviolet")
-            ax2.yaxis.set_label_position("right")
-            ax2.tick_params(
-                labelsize="x-small",
-                colors="darkviolet",
-                bottom=False,
-                labelbottom=False,
-                left=False,
-                labelleft=False,
-                right=True,
-                labelright=True,
-            )
 
+def spec_to_figure(spec, vmin=None, vmax=None):
+    if isinstance(spec, torch.Tensor):
+        spec = spec.detach().cpu().numpy()
+    fig = plt.figure(figsize=(12, 6))
+    plt.pcolor(spec.T, vmin=vmin, vmax=vmax)
+    return fig
+
+
+def f0_to_figure(f0_gt, f0_cwt=None, f0_pred=None):
+    fig = plt.figure()
+    if isinstance(f0_gt, torch.Tensor):
+        f0_gt = f0_gt.detach().cpu().numpy()
+    plt.plot(f0_gt, color='r', label='gt')
+    if f0_cwt is not None:
+        if isinstance(f0_cwt, torch.Tensor):
+            f0_cwt = f0_cwt.detach().cpu().numpy()
+        plt.plot(f0_cwt, color='b', label='cwt')
+    if f0_pred is not None:
+        if isinstance(f0_pred, torch.Tensor):
+            f0_pred = f0_pred.detach().cpu().numpy()
+        plt.plot(f0_pred, color='green', label='pred')
+    plt.legend()
+    return fig
+
+
+def energy_to_figure(energy_gt, energy_pred=None):
+    fig = plt.figure()
+    if isinstance(energy_gt, torch.Tensor):
+        energy_gt = energy_gt.detach().cpu().numpy()
+    plt.plot(energy_gt, color='r', label='gt')
+    if energy_pred is not None:
+        if isinstance(energy_pred, torch.Tensor):
+            energy_pred = energy_pred.detach().cpu().numpy()
+        plt.plot(energy_pred, color='green', label='pred')
+    plt.legend()
     return fig
 
 
@@ -449,3 +479,49 @@ def make_positions(tensor, padding_idx):
     return (
                    torch.cumsum(mask, dim=1).type_as(mask) * mask
            ).long() + padding_idx
+
+
+def gaussian(window_size, sigma):
+    gauss = torch.Tensor([exp(-(x - window_size // 2) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)])
+    return gauss / gauss.sum()
+
+
+def create_window(window_size, channel):
+    _1D_window = gaussian(window_size, 1.5).unsqueeze(1)
+    _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)
+    window = Variable(_2D_window.expand(channel, 1, window_size, window_size).contiguous())
+    return window
+
+
+def _ssim(img1, img2, window, window_size, channel, size_average=True):
+    mu1 = F.conv2d(img1, window, padding=window_size // 2, groups=channel)
+    mu2 = F.conv2d(img2, window, padding=window_size // 2, groups=channel)
+
+    mu1_sq = mu1.pow(2)
+    mu2_sq = mu2.pow(2)
+    mu1_mu2 = mu1 * mu2
+
+    sigma1_sq = F.conv2d(img1 * img1, window, padding=window_size // 2, groups=channel) - mu1_sq
+    sigma2_sq = F.conv2d(img2 * img2, window, padding=window_size // 2, groups=channel) - mu2_sq
+    sigma12 = F.conv2d(img1 * img2, window, padding=window_size // 2, groups=channel) - mu1_mu2
+
+    C1 = 0.01 ** 2
+    C2 = 0.03 ** 2
+
+    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
+
+    if size_average:
+        return ssim_map.mean()
+    else:
+        return ssim_map.mean(1)
+
+
+def ssim(img1, img2, window_size=11, size_average=True):
+        (_, channel, _, _) = img1.size()
+        global window
+        if window is None:
+            window = create_window(window_size, channel)
+            if img1.is_cuda:
+                window = window.cuda(img1.get_device())
+            window = window.type_as(img1)
+        return _ssim(img1, img2, window, window_size, channel, size_average)

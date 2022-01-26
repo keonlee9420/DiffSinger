@@ -35,6 +35,7 @@ class Dataset(Dataset):
 
         if self.pitch_type == 'cwt':
             _, self.cwt_scales = get_lf0_cwt(np.ones(10))
+            preprocess_config["preprocessing"]["pitch"]["cwt_scales"] = self.cwt_scales
 
     def __len__(self):
         return len(self.text)
@@ -63,7 +64,7 @@ class Dataset(Dataset):
             "{}-f0-{}.npy".format(speaker, basename),
         )
         f0 = np.load(f0_path)
-        f0, uv = norm_interp_f0(f0, self.preprocess_config)
+        f0, uv = norm_interp_f0(f0, self.preprocess_config["preprocessing"]["pitch"])
         energy_path = os.path.join(
             self.preprocessed_path,
             "energy",

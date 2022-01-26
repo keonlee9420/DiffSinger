@@ -99,7 +99,7 @@ def synthesize(model, args, configs, vocoder, batchs, control_values):
                 p_control=pitch_control,
                 e_control=energy_control,
                 d_control=duration_control
-            )
+            )[0]
             synth_samples(
                 batch,
                 output,

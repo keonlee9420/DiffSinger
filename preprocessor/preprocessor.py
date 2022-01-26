@@ -30,10 +30,6 @@ class Preprocessor:
 
         self.with_f0 = config["preprocessing"]["pitch"]["with_f0"]
         self.with_f0cwt = config["preprocessing"]["pitch"]["with_f0cwt"]
-        assert config["preprocessing"]["pitch"]["feature"] in [
-            "phoneme_level",
-            "frame_level",
-        ]
         assert config["preprocessing"]["energy"]["feature"] in [
             "phoneme_level",
             "frame_level",

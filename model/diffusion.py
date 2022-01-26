@@ -54,7 +54,7 @@ class GaussianDiffusion(nn.Module):
 
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
-        self.loss_type = train_config['loss']['loss_type']
+        self.loss_type = train_config['loss']['noise_loss']
 
         to_torch = partial(torch.tensor, dtype=torch.float32)
 
@@ -229,7 +229,7 @@ class GaussianDiffusionShallow(nn.Module):
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
         self.K_step = int(model_config["denoiser"]['K_step'])
-        self.loss_type = train_config['loss']['loss_type']
+        self.loss_type = train_config['loss']['noise_loss']
 
         to_torch = partial(torch.tensor, dtype=torch.float32)
 

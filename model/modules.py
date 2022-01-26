@@ -10,7 +10,7 @@ import numpy as np
 import torch.nn.functional as F
 
 from utils.tools import get_mask_from_lengths, pad, dur_to_mel2ph, make_positions
-from utils.pitch_utils import f0_to_coarse, denorm_f0
+from utils.pitch_utils import f0_to_coarse, denorm_f0, cwt2f0_norm
 
 from .blocks import (
     Mish,
@@ -335,7 +335,7 @@ class VarianceAdaptor(nn.Module):
             self.hidden_size = model_config["transformer"]["encoder_hidden"]
             self.predictor_layers = model_config["variance_predictor"]['predictor_layers']
             self.filter_size = model_config["variance_predictor"]["filter_size"]
-            self.kernel = model_config["variance_predictor"]["kernel_size"]
+            self.kernel = model_config["variance_predictor"]["pitch_kernel_size"]
             self.dropout = model_config["variance_predictor"]["dropout"]
             self.ffn_padding = model_config["variance_predictor"]['ffn_padding']
 
@@ -446,7 +446,7 @@ class VarianceAdaptor(nn.Module):
         #         uv = pitch_pred[:, :, 1] > 0
         else:
             raise NotImplementedError
-        f0_denorm = denorm_f0(f0, uv, self.preprocess_config, pitch_padding=pitch_padding)
+        f0_denorm = denorm_f0(f0, uv, self.preprocess_config["preprocessing"]["pitch"], pitch_padding=pitch_padding)
         if pitch_padding is not None:
             f0[pitch_padding] = 0
 
@@ -462,13 +462,6 @@ class VarianceAdaptor(nn.Module):
         }
 
         return pitch_pred, pitch_embed
-
-    def cwt2f0_norm(self, cwt_spec, mean, std, mel2ph):
-        f0 = cwt2f0(cwt_spec, mean, std, hparams['cwt_scales'])
-        f0 = torch.cat(
-            [f0] + [f0[:, -1:]] * (mel2ph.shape[1] - f0.shape[1]), 1)
-        f0_norm = norm_f0(f0, None, hparams)
-        return f0_norm
 
     def get_energy_embedding(self, x, target, mask, control):
         x.detach() + self.predictor_grad * (x - x.detach())
@@ -522,6 +515,14 @@ class VarianceAdaptor(nn.Module):
 
         output_2 = x.clone()
         if self.use_pitch_embed: # and self.pitch_type in ["frame", "cwt"]:
+            if self.pitch_type == 'cwt':
+                cwt_spec = pitch_target[f'cwt_spec']
+                f0_mean = pitch_target['f0_mean']
+                f0_std = pitch_target['f0_std']
+                pitch_target["f0"] = cwt2f0_norm(
+                    cwt_spec, f0_mean, f0_std, mel2ph, self.preprocess_config["preprocessing"]["pitch"],
+                )
+                pitch_target.update({"f0_cwt": pitch_target["f0"]})
             pitch_prediction, pitch_embedding = self.get_pitch_embedding(
                 x, pitch_target["f0"], pitch_target["uv"], mel2ph, encoder_out=output_1
             )

@@ -26,7 +26,7 @@ def synthesize(model, step, configs, loader):
             with torch.no_grad():
                 # Forward
                 target_mel = batch[6]
-                teacher_forced_mel = model(*(batch[2:]))[0]
+                teacher_forced_mel = model(*(batch[2:]))[0][0]
                 kld_T += model.diffusion.expected_kld_T(teacher_forced_mel)
 
                 for t in range(1, num_timesteps+1):

@@ -42,7 +42,7 @@ def main(args, configs):
     model, optimizer = get_model(args, configs, device, train=True)
     model = nn.DataParallel(model)
     num_param = get_param_num(model)
-    Loss = DiffSingerLoss(args, preprocess_config, model_config).to(device)
+    Loss = DiffSingerLoss(args, preprocess_config, model_config, train_config).to(device)
     print("Number of DiffSinger Parameters:", num_param)
 
     # Load vocoder
@@ -80,7 +80,9 @@ def main(args, configs):
                 batch = to_device(batch, device)
 
                 # Forward
-                output = model(*(batch[2:]))
+                output, p_targets = model(*(batch[2:]))
+                # Update Batch
+                batch[9] = p_targets
 
                 # Cal Loss
                 losses = Loss(batch, output)
@@ -98,10 +100,10 @@ def main(args, configs):
                     optimizer.zero_grad()
 
                 if step % log_step == 0:
-                    losses = [l.item() for l in losses]
+                    losses_ = [sum(l.values()).item() if isinstance(l, dict) else l.item() for l in losses]
                     message1 = "Step {}/{}, ".format(step, total_step)
                     message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Noise Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}".format(
-                        *losses
+                        *losses_
                     )
 
                     with open(os.path.join(train_log_path, "log.txt"), "a") as f:
@@ -112,7 +114,7 @@ def main(args, configs):
                     log(train_logger, step, losses=losses, lr=lr)
 
                 if step % synth_step == 0:
-                    fig, wav_reconstruction, wav_prediction, tag = synth_one_sample(
+                    figs, wav_reconstruction, wav_prediction, tag = synth_one_sample(
                         args,
                         batch,
                         output,
@@ -123,8 +125,9 @@ def main(args, configs):
                     )
                     log(
                         train_logger,
-                        fig=fig,
-                        tag="Training/step_{}_{}".format(step, tag),
+                        step,
+                        figs=figs,
+                        tag="Training",
                     )
                     sampling_rate = preprocess_config["preprocessing"]["audio"][
                         "sampling_rate"
@@ -144,7 +147,7 @@ def main(args, configs):
 
                 if step % val_step == 0:
                     model.eval()
-                    message = evaluate(args, model, step, configs, val_logger, vocoder, len(losses))
+                    message = evaluate(args, model, step, configs, val_logger, vocoder, losses)
                     with open(os.path.join(val_log_path, "log.txt"), "a") as f:
                         f.write(message + "\n")
                     outer_bar.write(message)
