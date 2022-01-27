@@ -135,7 +135,7 @@ class DiffSingerLoss(nn.Module):
         """
         losses = {}
         B, T = txt_tokens.shape
-        nonpadding = (txt_tokens != 0).float()
+        nonpadding = self.src_masks.float()
         dur_gt = dur_gt.float() * nonpadding
         is_sil = torch.zeros_like(txt_tokens).bool()
         for p_id in self.sil_ph_ids:
@@ -186,7 +186,7 @@ class DiffSingerLoss(nn.Module):
             mel2ph = self.mel2phs  # [B, T_s]
             f0 = pitch_targets['f0']
             uv = pitch_targets['uv']
-            nonpadding = (mel2ph != 0).float()
+            nonpadding = self.mel_masks.float()
             if self.pitch_type == 'cwt':
                 cwt_spec = pitch_targets[f'cwt_spec']
                 f0_mean = pitch_targets['f0_mean']
