@@ -118,15 +118,6 @@ class DiffSingerLoss(nn.Module):
         dim = target.size(-1)
         return target.abs().sum(-1, keepdim=True).ne(0).float().repeat(1, 1, dim)
 
-    def get_duration_loss(self, log_duration_predictions, duration_targets):
-        log_duration_targets = torch.log(duration_targets.float() + 1)
-        log_duration_targets.requires_grad = False
-
-        log_duration_predictions = log_duration_predictions.masked_select(self.src_masks)
-        log_duration_targets = log_duration_targets.masked_select(self.src_masks)
-        duration_loss = F.mse_loss(log_duration_predictions, log_duration_targets)
-        return duration_loss
-
     def get_duration_loss(self, dur_pred, dur_gt, txt_tokens):
         """
         :param dur_pred: [B, T], float, log scale

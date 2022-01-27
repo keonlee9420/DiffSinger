@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .blocks import LinearNorm
-from .modules import TextEncoder, VarianceAdaptor, AuxDecoder
+from .modules import FastspeechEncoder, FastspeechDecoder, VarianceAdaptor
 from .diffusion import GaussianDiffusion, GaussianDiffusionShallow
 from utils.tools import get_mask_from_lengths
 
@@ -19,13 +19,13 @@ class DiffSinger(nn.Module):
         self.model = args.model
         self.model_config = model_config
 
-        self.text_encoder = TextEncoder(model_config)
-        self.variance_adaptor = VarianceAdaptor(preprocess_config, model_config)
+        self.text_encoder = FastspeechEncoder(model_config)
+        self.variance_adaptor = VarianceAdaptor(preprocess_config, model_config, train_config)
         self.diffusion = None
         if self.model == "naive":
             self.diffusion = GaussianDiffusion(preprocess_config, model_config, train_config)
         elif self.model in ["aux", "shallow"]:
-            self.decoder = AuxDecoder(model_config)
+            self.decoder = FastspeechDecoder(model_config)
             self.mel_linear = nn.Linear(
                 model_config["transformer"]["decoder_hidden"],
                 preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
@@ -116,7 +116,7 @@ class DiffSinger(nn.Module):
         elif self.model in ["aux", "shallow"]:
             epsilon_predictions = noise_loss = diffusion_step = None
             cond = output.clone()
-            output, mel_masks = self.decoder(output, mel_masks)
+            output = self.decoder(output, mel_masks)
             output = self.mel_linear(output)
             self.diffusion.aux_mel = output.clone()
             if self.model == "shallow":

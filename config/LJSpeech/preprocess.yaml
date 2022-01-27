@@ -30,7 +30,6 @@ preprocessing:
     with_f0: True
     with_f0cwt: True
     use_uv: True
-    feature: "frame_level" # only support 'frame_level'
     f0_mean: 214.31683793057
     f0_std: 63.97520977575229
     cwt_scales: -1
