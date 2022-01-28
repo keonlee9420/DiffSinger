@@ -21,7 +21,7 @@ PyTorch implementation of [DiffSinger: Singing Voice Synthesis via Shallow Diffu
 
 ***DATASET*** refers to the names of datasets such as `LJSpeech` in the following documents.
 
-***MODEL*** refers to the types of model (choose from '**naive**', **aux**', '**shallow**').
+***MODEL*** refers to the types of model (choose from '**naive**', '**aux**', '**shallow**').
 
 ## Dependencies
 You can install the Python dependencies with
@@ -31,7 +31,9 @@ pip3 install -r requirements.txt
 
 ## Inference
 
-You have to download the [pretrained models](https://drive.google.com/drive/folders/1BBuaoSlInwFoUt1PKLxo0Sjl5qWCq945?usp=sharing) and put them in ``output/ckpt/LJSpeech_{MODEL}/``.
+You have to download the [pretrained models](https://drive.google.com/drive/folders/1BBuaoSlInwFoUt1PKLxo0Sjl5qWCq945?usp=sharing) and put them in 
+- ``output/ckpt/LJSpeech_naive/`` for '**naive**' model.
+- ``output/ckpt/LJSpeech_shallow/`` for '**shallow**' model. Please note that the checkpoint of the '**shallow**' model contains both '**shallow**' and '**aux**' models, and these two models will share all directories except results throughout the whole process.
 
 For English single-speaker TTS, run
 ```
@@ -46,7 +48,8 @@ Batch inference is also supported, try
 ```
 python3 synthesize.py --source preprocessed_data/LJSpeech/val.txt --model MODEL --restore_step RESTORE_STEP --mode batch --dataset DATASET
 ```
-to synthesize all utterances in ``preprocessed_data/LJSpeech/val.txt``
+to synthesize all utterances in ``preprocessed_data/LJSpeech/val.txt``.
+
 
 ## Controllability
 The pitch/volume/speaking rate of the synthesized utterances can be controlled by specifying the desired pitch/energy/duration ratios.
@@ -105,9 +108,9 @@ You can train three types of model: '**naive**', '**aux**', and '**shallow**'.
 
     To get the boundary `K` from our validation dataset, you can run the boundary predictor using pre-trained auxiliary FastSpeech2 by the following command.
     ```
-    python3 boundary_predictor.py --restore_step DATASET --dataset DATASET
+    python3 boundary_predictor.py --restore_step RESTORE_STEP --dataset DATASET
     ```
-    It will print out the predicted value in the log.
+    It will print out the predicted value (say, `K_STEP`) in the command log.
     
     Then, set the config with the predicted value as follows
     ```yaml
