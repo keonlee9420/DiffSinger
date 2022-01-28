@@ -39,7 +39,7 @@ class GaussianDiffusion(nn.Module):
     def __init__(self, preprocess_config, model_config, train_config):
         super().__init__()
         self.denoise_fn = Denoiser(preprocess_config, model_config)
-        self.mel_bins = preprocess_config['preprocessing']['mel']['n_mel_channels']
+        self.mel_bins = preprocess_config["preprocessing"]["mel"]["n_mel_channels"]
 
         betas = get_noise_schedule_list(
             model_config["denoiser"]["noise_schedule_naive"],
@@ -54,38 +54,38 @@ class GaussianDiffusion(nn.Module):
 
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
-        self.loss_type = train_config['loss']['noise_loss']
+        self.loss_type = train_config["loss"]["noise_loss"]
 
         to_torch = partial(torch.tensor, dtype=torch.float32)
 
-        self.register_buffer('betas', to_torch(betas))
-        self.register_buffer('alphas_cumprod', to_torch(alphas_cumprod))
-        self.register_buffer('alphas_cumprod_prev', to_torch(alphas_cumprod_prev))
+        self.register_buffer("betas", to_torch(betas))
+        self.register_buffer("alphas_cumprod", to_torch(alphas_cumprod))
+        self.register_buffer("alphas_cumprod_prev", to_torch(alphas_cumprod_prev))
 
         # calculations for diffusion q(x_t | x_{t-1}) and others
-        self.register_buffer('sqrt_alphas_cumprod', to_torch(np.sqrt(alphas_cumprod)))
-        self.register_buffer('sqrt_one_minus_alphas_cumprod', to_torch(np.sqrt(1. - alphas_cumprod)))
-        self.register_buffer('log_one_minus_alphas_cumprod', to_torch(np.log(1. - alphas_cumprod)))
-        self.register_buffer('sqrt_recip_alphas_cumprod', to_torch(np.sqrt(1. / alphas_cumprod)))
-        self.register_buffer('sqrt_recipm1_alphas_cumprod', to_torch(np.sqrt(1. / alphas_cumprod - 1)))
+        self.register_buffer("sqrt_alphas_cumprod", to_torch(np.sqrt(alphas_cumprod)))
+        self.register_buffer("sqrt_one_minus_alphas_cumprod", to_torch(np.sqrt(1. - alphas_cumprod)))
+        self.register_buffer("log_one_minus_alphas_cumprod", to_torch(np.log(1. - alphas_cumprod)))
+        self.register_buffer("sqrt_recip_alphas_cumprod", to_torch(np.sqrt(1. / alphas_cumprod)))
+        self.register_buffer("sqrt_recipm1_alphas_cumprod", to_torch(np.sqrt(1. / alphas_cumprod - 1)))
 
         # calculations for posterior q(x_{t-1} | x_t, x_0)
         posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
         # above: equal to 1. / (1. / (1. - alpha_cumprod_tm1) + alpha_t / beta_t)
-        self.register_buffer('posterior_variance', to_torch(posterior_variance))
+        self.register_buffer("posterior_variance", to_torch(posterior_variance))
         # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
-        self.register_buffer('posterior_log_variance_clipped', to_torch(np.log(np.maximum(posterior_variance, 1e-20))))
-        self.register_buffer('posterior_mean_coef1', to_torch(
+        self.register_buffer("posterior_log_variance_clipped", to_torch(np.log(np.maximum(posterior_variance, 1e-20))))
+        self.register_buffer("posterior_mean_coef1", to_torch(
             betas * np.sqrt(alphas_cumprod_prev) / (1. - alphas_cumprod)))
-        self.register_buffer('posterior_mean_coef2', to_torch(
+        self.register_buffer("posterior_mean_coef2", to_torch(
             (1. - alphas_cumprod_prev) * np.sqrt(alphas) / (1. - alphas_cumprod)))
 
         with open(
                 os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
         ) as f:
             stats = json.load(f)
-            self.register_buffer('spec_min', torch.FloatTensor(stats["spec_min"])[None, None, :model_config["denoiser"]['keep_bins']])
-            self.register_buffer('spec_max', torch.FloatTensor(stats["spec_max"])[None, None, :model_config["denoiser"]['keep_bins']])
+            self.register_buffer("spec_min", torch.FloatTensor(stats["spec_min"])[None, None, :model_config["denoiser"]["keep_bins"]])
+            self.register_buffer("spec_max", torch.FloatTensor(stats["spec_max"])[None, None, :model_config["denoiser"]["keep_bins"]])
 
     def q_mean_variance(self, x_start, t):
         mean = extract(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start
@@ -138,7 +138,7 @@ class GaussianDiffusion(nn.Module):
         xt1, xt2 = map(lambda x: self.q_sample(x, t=t_batched), (x1, x2))
 
         x = (1 - lam) * xt1 + lam * xt2
-        for i in tqdm(reversed(range(0, t)), desc='interpolation sample time step', total=t):
+        for i in tqdm(reversed(range(0, t)), desc="interpolation sample time step", total=t):
             x = self.p_sample(x, torch.full((b,), i, device=device, dtype=torch.long), cond)
         x = x[:, 0].transpose(1, 2)
         return self.denorm_spec(x)
@@ -157,15 +157,15 @@ class GaussianDiffusion(nn.Module):
         noised_mel = self.q_sample(x_start=x_start, t=t, noise=noise)
         epsilon = self.denoise_fn(noised_mel, t, cond)
 
-        if self.loss_type == 'l1':
+        if self.loss_type == "l1":
             if mask is not None:
                 mask = mask.unsqueeze(-1).transpose(1, 2)
                 loss = (noise - epsilon).abs().squeeze(1).masked_fill(mask, 0.0).mean()
             else:
-                print('are you sure w/o mask?')
+                print("are you sure w/o mask?")
                 loss = (noise - epsilon).abs().mean()
 
-        elif self.loss_type == 'l2':
+        elif self.loss_type == "l2":
             loss = F.mse_loss(noise, epsilon)
         else:
             raise NotImplementedError()
@@ -178,7 +178,7 @@ class GaussianDiffusion(nn.Module):
         t = self.num_timesteps
         shape = (self.cond.shape[0], 1, self.mel_bins, self.cond.shape[2])
         x = torch.randn(shape, device=device)
-        for i in tqdm(reversed(range(0, t)), desc='sample time step', total=t):
+        for i in tqdm(reversed(range(0, t)), desc="sample time step", total=t):
             x = self.p_sample(x, torch.full((b,), i, device=device, dtype=torch.long), self.cond)
         x = x[:, 0].transpose(1, 2)
         output = self.denorm_spec(x)
@@ -213,7 +213,7 @@ class GaussianDiffusionShallow(nn.Module):
     def __init__(self, preprocess_config, model_config, train_config):
         super().__init__()
         self.denoise_fn = Denoiser(preprocess_config, model_config)
-        self.mel_bins = preprocess_config['preprocessing']['mel']['n_mel_channels']
+        self.mel_bins = preprocess_config["preprocessing"]["mel"]["n_mel_channels"]
 
         betas = get_noise_schedule_list(
             model_config["denoiser"]["noise_schedule_shallow"],
@@ -228,39 +228,39 @@ class GaussianDiffusionShallow(nn.Module):
 
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
-        self.K_step = int(model_config["denoiser"]['K_step'])
-        self.loss_type = train_config['loss']['noise_loss']
+        self.K_step = int(model_config["denoiser"]["K_step"])
+        self.loss_type = train_config["loss"]["noise_loss"]
 
         to_torch = partial(torch.tensor, dtype=torch.float32)
 
-        self.register_buffer('betas', to_torch(betas))
-        self.register_buffer('alphas_cumprod', to_torch(alphas_cumprod))
-        self.register_buffer('alphas_cumprod_prev', to_torch(alphas_cumprod_prev))
+        self.register_buffer("betas", to_torch(betas))
+        self.register_buffer("alphas_cumprod", to_torch(alphas_cumprod))
+        self.register_buffer("alphas_cumprod_prev", to_torch(alphas_cumprod_prev))
 
         # calculations for diffusion q(x_t | x_{t-1}) and others
-        self.register_buffer('sqrt_alphas_cumprod', to_torch(np.sqrt(alphas_cumprod)))
-        self.register_buffer('sqrt_one_minus_alphas_cumprod', to_torch(np.sqrt(1. - alphas_cumprod)))
-        self.register_buffer('log_one_minus_alphas_cumprod', to_torch(np.log(1. - alphas_cumprod)))
-        self.register_buffer('sqrt_recip_alphas_cumprod', to_torch(np.sqrt(1. / alphas_cumprod)))
-        self.register_buffer('sqrt_recipm1_alphas_cumprod', to_torch(np.sqrt(1. / alphas_cumprod - 1)))
+        self.register_buffer("sqrt_alphas_cumprod", to_torch(np.sqrt(alphas_cumprod)))
+        self.register_buffer("sqrt_one_minus_alphas_cumprod", to_torch(np.sqrt(1. - alphas_cumprod)))
+        self.register_buffer("log_one_minus_alphas_cumprod", to_torch(np.log(1. - alphas_cumprod)))
+        self.register_buffer("sqrt_recip_alphas_cumprod", to_torch(np.sqrt(1. / alphas_cumprod)))
+        self.register_buffer("sqrt_recipm1_alphas_cumprod", to_torch(np.sqrt(1. / alphas_cumprod - 1)))
 
         # calculations for posterior q(x_{t-1} | x_t, x_0)
         posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
         # above: equal to 1. / (1. / (1. - alpha_cumprod_tm1) + alpha_t / beta_t)
-        self.register_buffer('posterior_variance', to_torch(posterior_variance))
+        self.register_buffer("posterior_variance", to_torch(posterior_variance))
         # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
-        self.register_buffer('posterior_log_variance_clipped', to_torch(np.log(np.maximum(posterior_variance, 1e-20))))
-        self.register_buffer('posterior_mean_coef1', to_torch(
+        self.register_buffer("posterior_log_variance_clipped", to_torch(np.log(np.maximum(posterior_variance, 1e-20))))
+        self.register_buffer("posterior_mean_coef1", to_torch(
             betas * np.sqrt(alphas_cumprod_prev) / (1. - alphas_cumprod)))
-        self.register_buffer('posterior_mean_coef2', to_torch(
+        self.register_buffer("posterior_mean_coef2", to_torch(
             (1. - alphas_cumprod_prev) * np.sqrt(alphas) / (1. - alphas_cumprod)))
 
         with open(
                 os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
         ) as f:
             stats = json.load(f)
-            self.register_buffer('spec_min', torch.FloatTensor(stats["spec_min"])[None, None, :model_config["denoiser"]['keep_bins']])
-            self.register_buffer('spec_max', torch.FloatTensor(stats["spec_max"])[None, None, :model_config["denoiser"]['keep_bins']])
+            self.register_buffer("spec_min", torch.FloatTensor(stats["spec_min"])[None, None, :model_config["denoiser"]["keep_bins"]])
+            self.register_buffer("spec_max", torch.FloatTensor(stats["spec_max"])[None, None, :model_config["denoiser"]["keep_bins"]])
         self.aux_mel = None
 
     def q_mean_variance(self, x_start, t):
@@ -314,7 +314,7 @@ class GaussianDiffusionShallow(nn.Module):
         xt1, xt2 = map(lambda x: self.q_sample(x, t=t_batched), (x1, x2))
 
         x = (1 - lam) * xt1 + lam * xt2
-        for i in tqdm(reversed(range(0, t)), desc='interpolation sample time step', total=t):
+        for i in tqdm(reversed(range(0, t)), desc="interpolation sample time step", total=t):
             x = self.p_sample(x, torch.full((b,), i, device=device, dtype=torch.long), cond)
         x = x[:, 0].transpose(1, 2)
         return self.denorm_spec(x)
@@ -333,15 +333,15 @@ class GaussianDiffusionShallow(nn.Module):
         noised_mel = self.q_sample(x_start=x_start, t=t, noise=noise)
         epsilon = self.denoise_fn(noised_mel, t, cond)
 
-        if self.loss_type == 'l1':
+        if self.loss_type == "l1":
             if mask is not None:
                 mask = mask.unsqueeze(-1).transpose(1, 2)
                 loss = (noise - epsilon).abs().squeeze(1).masked_fill(mask, 0.0).mean()
             else:
-                print('are you sure w/o mask?')
+                print("are you sure w/o mask?")
                 loss = (noise - epsilon).abs().mean()
 
-        elif self.loss_type == 'l2':
+        elif self.loss_type == "l2":
             loss = F.mse_loss(noise, epsilon)
         else:
             raise NotImplementedError()
@@ -380,7 +380,7 @@ class GaussianDiffusionShallow(nn.Module):
         fs2_mels = fs2_mels.transpose(1, 2)[:, None, :, :]
 
         x = self.q_sample(x_start=fs2_mels, t=torch.tensor([t - 1], device=device).long())
-        for i in tqdm(reversed(range(0, t)), desc='sample time step', total=t):
+        for i in tqdm(reversed(range(0, t)), desc="sample time step", total=t):
             x = self.p_sample(x, torch.full((b,), i, device=device, dtype=torch.long), self.cond)
         x = x[:, 0].transpose(1, 2)
         output = self.denorm_spec(x)

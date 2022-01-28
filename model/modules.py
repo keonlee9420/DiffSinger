@@ -10,7 +10,7 @@ import numpy as np
 import torch.nn.functional as F
 
 from utils.tools import get_mask_from_lengths, pad, dur_to_mel2ph
-from utils.pitch_utils import f0_to_coarse, denorm_f0, cwt2f0_norm
+from utils.pitch_tools import f0_to_coarse, denorm_f0, cwt2f0_norm
 
 from .blocks import (
     Embedding,
@@ -30,7 +30,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class TransformerEncoderLayer(nn.Module):
-    def __init__(self, hidden_size, dropout, kernel_size=None, num_heads=2, norm='ln', ffn_padding="SAME", ffn_act="gelu"):
+    def __init__(self, hidden_size, dropout, kernel_size=None, num_heads=2, norm="ln", ffn_padding="SAME", ffn_act="gelu"):
         super().__init__()
         self.hidden_size = hidden_size
         self.dropout = dropout
@@ -48,7 +48,7 @@ class TransformerEncoderLayer(nn.Module):
 
 class FFTBlocks(nn.Module):
     def __init__(self, hidden_size, num_layers, max_seq_len=2000, ffn_kernel_size=9, dropout=None, num_heads=2,
-                 use_pos_embed=True, use_last_norm=True, norm='ln', ffn_padding="SAME", ffn_act="gelu", use_pos_embed_alpha=True):
+                 use_pos_embed=True, use_last_norm=True, norm="ln", ffn_padding="SAME", ffn_act="gelu", use_pos_embed_alpha=True):
         super().__init__()
         self.num_layers = num_layers
         embed_dim = self.hidden_size = hidden_size
@@ -70,9 +70,9 @@ class FFTBlocks(nn.Module):
             for _ in range(self.num_layers)
         ])
         if self.use_last_norm:
-            if norm == 'ln':
+            if norm == "ln":
                 self.layer_norm = nn.LayerNorm(embed_dim)
-            elif norm == 'bn':
+            elif norm == "bn":
                 self.layer_norm = BatchNorm1dTBC(embed_dim)
         else:
             self.layer_norm = None
@@ -135,7 +135,7 @@ class FastspeechEncoder(FFTBlocks):
         :param txt_tokens: [B, T]
         :param encoder_padding_mask: [B, T]
         :return: {
-            'encoder_out': [T x B x C]
+            "encoder_out": [T x B x C]
         }
         """
         x = self.forward_embedding(txt_tokens)  # [B, T, H]
@@ -179,16 +179,16 @@ class VarianceAdaptor(nn.Module):
 
         self.hidden_size = model_config["transformer"]["encoder_hidden"]
         self.filter_size = model_config["variance_predictor"]["filter_size"]
-        self.predictor_layers = model_config["variance_predictor"]['predictor_layers']
+        self.predictor_layers = model_config["variance_predictor"]["predictor_layers"]
         self.dropout = model_config["variance_predictor"]["dropout"]
-        self.ffn_padding = model_config["transformer"]['ffn_padding']
+        self.ffn_padding = model_config["transformer"]["ffn_padding"]
         self.kernel = model_config["variance_predictor"]["predictor_kernel"]
         self.duration_predictor = DurationPredictor(
             self.hidden_size,
             n_chans=self.filter_size,
             n_layers=model_config["variance_predictor"]["dur_predictor_layers"],
             dropout_rate=self.dropout, padding=self.ffn_padding,
-            kernel_size=model_config["variance_predictor"]['dur_predictor_kernel'],
+            kernel_size=model_config["variance_predictor"]["dur_predictor_kernel"],
             dur_loss=train_config["loss"]["dur_loss"])
         self.length_regulator = LengthRegulator()
         if self.use_pitch_embed:
@@ -196,9 +196,9 @@ class VarianceAdaptor(nn.Module):
             self.pitch_type = preprocess_config["preprocessing"]["pitch"]["pitch_type"]
             self.use_uv = preprocess_config["preprocessing"]["pitch"]["use_uv"]
 
-            if self.pitch_type == 'cwt':
-                self.cwt_std_scale = model_config["variance_predictor"]['cwt_std_scale']
-                h = model_config["variance_predictor"]['cwt_hidden_size']
+            if self.pitch_type == "cwt":
+                self.cwt_std_scale = model_config["variance_predictor"]["cwt_std_scale"]
+                h = model_config["variance_predictor"]["cwt_hidden_size"]
                 cwt_out_dims = 10
                 if self.use_uv:
                     cwt_out_dims = cwt_out_dims + 1
@@ -220,7 +220,7 @@ class VarianceAdaptor(nn.Module):
                     n_chans=self.filter_size,
                     n_layers=self.predictor_layers,
                     dropout_rate=self.dropout,
-                    odim=2 if self.pitch_type == 'frame' else 1,
+                    odim=2 if self.pitch_type == "frame" else 1,
                     padding=self.ffn_padding, kernel_size=self.kernel)
             self.pitch_embed = Embedding(n_bins, self.hidden_size, padding_idx=0)
         if self.use_energy_embed:
@@ -260,7 +260,7 @@ class VarianceAdaptor(nn.Module):
 
     def get_pitch_embedding(self, decoder_inp, f0, uv, mel2ph, control, encoder_out=None):
         pitch_pred = f0_denorm = cwt = f0_mean = f0_std = None
-        if self.pitch_type == 'ph':
+        if self.pitch_type == "ph":
             pitch_pred_inp = encoder_out.detach() + self.predictor_grad * (encoder_out - encoder_out.detach())
             pitch_padding = encoder_out.sum().abs() == 0
             pitch_pred = self.pitch_predictor(pitch_pred_inp) * control
@@ -275,7 +275,7 @@ class VarianceAdaptor(nn.Module):
             decoder_inp = decoder_inp.detach() + self.predictor_grad * (decoder_inp - decoder_inp.detach())
             pitch_padding = mel2ph == 0
 
-            if self.pitch_type == 'cwt':
+            if self.pitch_type == "cwt":
                 pitch_padding = None
                 cwt = cwt_out = self.cwt_predictor(decoder_inp) * control
                 stats_out = self.cwt_stats_layers(encoder_out[:, 0, :])  # [B, 2]
@@ -290,7 +290,7 @@ class VarianceAdaptor(nn.Module):
                     if self.use_uv:
                         assert cwt_out.shape[-1] == 11
                         uv = cwt_out[:, :, -1] > 0
-            elif self.preprocess_config["preprocessing"]["pitch"]['pitch_ar']:
+            elif self.preprocess_config["preprocessing"]["pitch"]["pitch_ar"]:
                 pitch_pred = self.pitch_predictor(decoder_inp, f0 if self.training else None) * control
                 if f0 is None:
                     f0 = pitch_pred[:, :, 0]
@@ -371,10 +371,10 @@ class VarianceAdaptor(nn.Module):
         output_2 = x.clone()
         if self.use_pitch_embed: # and self.pitch_type in ["frame", "cwt"]:
             if pitch_target is not None:
-                if self.pitch_type == 'cwt':
-                    cwt_spec = pitch_target[f'cwt_spec']
-                    f0_mean = pitch_target['f0_mean']
-                    f0_std = pitch_target['f0_std']
+                if self.pitch_type == "cwt":
+                    cwt_spec = pitch_target[f"cwt_spec"]
+                    f0_mean = pitch_target["f0_mean"]
+                    f0_std = pitch_target["f0_std"]
                     pitch_target["f0"] = cwt2f0_norm(
                         cwt_spec, f0_mean, f0_std, mel2ph, self.preprocess_config["preprocessing"]["pitch"],
                     )
@@ -452,7 +452,7 @@ class DurationPredictor(torch.nn.Module):
         the outputs are calculated in log domain but in `inference`, those are calculated in linear domain.
     """
 
-    def __init__(self, idim, n_layers=2, n_chans=384, kernel_size=3, dropout_rate=0.1, offset=1.0, padding='SAME', dur_loss="mse"):
+    def __init__(self, idim, n_layers=2, n_chans=384, kernel_size=3, dropout_rate=0.1, offset=1.0, padding="SAME", dur_loss="mse"):
         """Initilize duration predictor module.
         Args:
             idim (int): Input dimension.
@@ -472,18 +472,18 @@ class DurationPredictor(torch.nn.Module):
             in_chans = idim if idx == 0 else n_chans
             self.conv += [torch.nn.Sequential(
                 torch.nn.ConstantPad1d(((kernel_size - 1) // 2, (kernel_size - 1) // 2)
-                                       if padding == 'SAME'
+                                       if padding == "SAME"
                                        else (kernel_size - 1, 0), 0),
                 torch.nn.Conv1d(in_chans, n_chans, kernel_size, stride=1, padding=0),
                 torch.nn.ReLU(),
                 LayerNorm(n_chans, dim=1),
                 torch.nn.Dropout(dropout_rate)
             )]
-        if self.dur_loss in ['mse', 'huber']:
+        if self.dur_loss in ["mse", "huber"]:
             odims = 1
-        elif self.dur_loss == 'mog':
+        elif self.dur_loss == "mog":
             odims = 15
-        elif self.dur_loss == 'crf':
+        elif self.dur_loss == "crf":
             odims = 32
             from torchcrf import CRF
             self.crf = CRF(odims, batch_first=True)
@@ -498,14 +498,14 @@ class DurationPredictor(torch.nn.Module):
 
         xs = self.linear(xs.transpose(1, -1))  # [B, T, C]
         xs = xs * (1 - x_masks.float())[:, :, None]  # (B, T, C)
-        if self.dur_loss in ['mse']:
+        if self.dur_loss in ["mse"]:
             xs = xs.squeeze(-1)  # (B, Tmax)
         return xs
 
 
 class PitchPredictor(torch.nn.Module):
     def __init__(self, idim, n_layers=5, n_chans=384, odim=2, kernel_size=5,
-                 dropout_rate=0.1, padding='SAME'):
+                 dropout_rate=0.1, padding="SAME"):
         """Initilize pitch predictor module.
         Args:
             idim (int): Input dimension.
@@ -522,7 +522,7 @@ class PitchPredictor(torch.nn.Module):
             in_chans = idim if idx == 0 else n_chans
             self.conv += [torch.nn.Sequential(
                 torch.nn.ConstantPad1d(((kernel_size - 1) // 2, (kernel_size - 1) // 2)
-                                       if padding == 'SAME'
+                                       if padding == "SAME"
                                        else (kernel_size - 1, 0), 0),
                 torch.nn.Conv1d(in_chans, n_chans, kernel_size, stride=1, padding=0),
                 torch.nn.ReLU(),

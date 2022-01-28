@@ -1,5 +1,5 @@
 transformer:
-  encoder_layer: 2
+  encoder_layer: 4
   encoder_head: 2
   encoder_hidden: 256
   decoder_layer: 6
@@ -16,8 +16,8 @@ denoiser:
   denoiser_dropout: 0.2
   residual_layers: 20
   residual_channels: 256
-  noise_schedule_naive: 'cosine'
-  noise_schedule_shallow: 'linear'
+  noise_schedule_naive: "cosine"
+  noise_schedule_shallow: "linear"
   timesteps: 100
   K_step: 71
   max_beta: 0.06

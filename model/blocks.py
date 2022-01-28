@@ -38,7 +38,7 @@ class SinusoidalPositionalEmbedding(nn.Module):
             embedding_dim,
             padding_idx,
         )
-        self.register_buffer('_float_tensor', torch.FloatTensor(1))
+        self.register_buffer("_float_tensor", torch.FloatTensor(1))
 
     @staticmethod
     def get_embedding(num_embeddings, embedding_dim, padding_idx=None):
@@ -212,8 +212,8 @@ class MultiheadAttention(nn.Module):
         self.self_attention = self_attention
         self.encoder_decoder_attention = encoder_decoder_attention
 
-        assert not self.self_attention or self.qkv_same_dim, 'Self-attention requires query, key and ' \
-                                                             'value to be of the same size'
+        assert not self.self_attention or self.qkv_same_dim, "Self-attention requires query, key and " \
+                                                             "value to be of the same size"
 
         if self.qkv_same_dim:
             self.in_proj_weight = nn.Parameter(torch.Tensor(3 * embed_dim, embed_dim))
@@ -225,7 +225,7 @@ class MultiheadAttention(nn.Module):
         if bias:
             self.in_proj_bias = nn.Parameter(torch.Tensor(3 * embed_dim))
         else:
-            self.register_parameter('in_proj_bias', None)
+            self.register_parameter("in_proj_bias", None)
 
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
 
@@ -324,7 +324,7 @@ class MultiheadAttention(nn.Module):
                                                       v_proj_weight=self.v_proj_weight)
 
         if incremental_state is not None:
-            print('Not implemented error.')
+            print("Not implemented error.")
             exit()
         else:
             saved_state = None
@@ -365,7 +365,7 @@ class MultiheadAttention(nn.Module):
             v = v.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
 
         if saved_state is not None:
-            print('Not implemented error.')
+            print("Not implemented error.")
             exit()
 
         src_len = k.size(1)
@@ -514,26 +514,26 @@ class CustomSwish(nn.Module):
 
 
 class TransformerFFNLayer(nn.Module):
-    def __init__(self, hidden_size, filter_size, padding="SAME", kernel_size=1, dropout=0., act='gelu'):
+    def __init__(self, hidden_size, filter_size, padding="SAME", kernel_size=1, dropout=0., act="gelu"):
         super().__init__()
         self.kernel_size = kernel_size
         self.dropout = dropout
         self.act = act
-        if padding == 'SAME':
+        if padding == "SAME":
             self.ffn_1 = nn.Conv1d(hidden_size, filter_size, kernel_size, padding=kernel_size // 2)
-        elif padding == 'LEFT':
+        elif padding == "LEFT":
             self.ffn_1 = nn.Sequential(
                 nn.ConstantPad1d((kernel_size - 1, 0), 0.0),
                 nn.Conv1d(hidden_size, filter_size, kernel_size)
             )
         self.ffn_2 = Linear(filter_size, hidden_size)
-        if self.act == 'swish':
+        if self.act == "swish":
             self.swish_fn = CustomSwish()
 
     def forward(self, x, incremental_state=None):
         # x: T x B x C
         if incremental_state is not None:
-            assert incremental_state is None, 'Nar-generation does not allow this.'
+            assert incremental_state is None, "Nar-generation does not allow this."
             exit(1)
 
         x = self.ffn_1(x.permute(1, 2, 0)).permute(2, 0, 1)
@@ -541,11 +541,11 @@ class TransformerFFNLayer(nn.Module):
 
         if incremental_state is not None:
             x = x[-1:]
-        if self.act == 'gelu':
+        if self.act == "gelu":
             x = F.gelu(x)
-        if self.act == 'relu':
+        if self.act == "relu":
             x = F.relu(x)
-        if self.act == 'swish':
+        if self.act == "swish":
             x = self.swish_fn(x)
         x = F.dropout(x, self.dropout, training=self.training)
         x = self.ffn_2(x)
@@ -571,28 +571,28 @@ class BatchNorm1dTBC(nn.Module):
 
 class EncSALayer(nn.Module):
     def __init__(self, c, num_heads, dropout, attention_dropout=0.1,
-                 relu_dropout=0.1, kernel_size=9, padding='SAME', norm='ln', act='gelu'):
+                 relu_dropout=0.1, kernel_size=9, padding="SAME", norm="ln", act="gelu"):
         super().__init__()
         self.c = c
         self.dropout = dropout
         self.num_heads = num_heads
         if num_heads > 0:
-            if norm == 'ln':
+            if norm == "ln":
                 self.layer_norm1 = LayerNorm(c)
-            elif norm == 'bn':
+            elif norm == "bn":
                 self.layer_norm1 = BatchNorm1dTBC(c)
             self.self_attn = MultiheadAttention(
                 self.c, num_heads, self_attention=True, dropout=attention_dropout, bias=False,
             )
-        if norm == 'ln':
+        if norm == "ln":
             self.layer_norm2 = LayerNorm(c)
-        elif norm == 'bn':
+        elif norm == "bn":
             self.layer_norm2 = BatchNorm1dTBC(c)
         self.ffn = TransformerFFNLayer(
             c, 4 * c, kernel_size=kernel_size, dropout=relu_dropout, padding=padding, act=act)
 
     def forward(self, x, encoder_padding_mask=None, **kwargs):
-        layer_norm_training = kwargs.get('layer_norm_training', None)
+        layer_norm_training = kwargs.get("layer_norm_training", None)
         if layer_norm_training is not None:
             self.layer_norm1.training = layer_norm_training
             self.layer_norm2.training = layer_norm_training

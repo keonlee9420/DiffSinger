@@ -11,7 +11,7 @@ from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 
 import audio as Audio
-from utils.pitch_utils import get_pitch, get_cont_lf0, get_lf0_cwt
+from utils.pitch_tools import get_pitch, get_cont_lf0, get_lf0_cwt
 from utils.tools import dur_to_mel2ph, mel2ph_to_dur
 
 

@@ -12,7 +12,7 @@ from scipy.io import wavfile
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 
-from utils.pitch_utils import denorm_f0, expand_f0_ph, cwt2f0
+from utils.pitch_tools import denorm_f0, expand_f0_ph, cwt2f0
 
 
 matplotlib.use("Agg")
@@ -165,32 +165,32 @@ def synth_one_sample(args, targets, predictions, vocoder, model_config, preproce
     figs = {}
     if use_pitch_embed:
         pitch_prediction, pitch_target = predictions[4], targets[9]
-        f0 = pitch_target['f0']
-        if pitch_type == 'ph':
+        f0 = pitch_target["f0"]
+        if pitch_type == "ph":
             mel2ph = targets[12]
             f0 = expand_f0_ph(f0, mel2ph, pitch_config)
-            f0_pred = expand_f0_ph(pitch_prediction['pitch_pred'][:, :, 0], mel2ph, pitch_config)
+            f0_pred = expand_f0_ph(pitch_prediction["pitch_pred"][:, :, 0], mel2ph, pitch_config)
             figs["f0"] = f0_to_figure(f0[0, :mel_len], None, f0_pred[0, :mel_len])
         else:
-            f0 = denorm_f0(f0, pitch_target['uv'], pitch_config)
-            if pitch_type == 'cwt':
+            f0 = denorm_f0(f0, pitch_target["uv"], pitch_config)
+            if pitch_type == "cwt":
                 # cwt
-                cwt_out = pitch_prediction['cwt']
+                cwt_out = pitch_prediction["cwt"]
                 cwt_spec = cwt_out[:, :, :10]
-                cwt = torch.cat([cwt_spec, pitch_target['cwt_spec']], -1)
+                cwt = torch.cat([cwt_spec, pitch_target["cwt_spec"]], -1)
                 figs["cwt"] = spec_to_figure(cwt[0, :mel_len])
                 # f0
-                f0_pred = cwt2f0(cwt_spec, pitch_prediction['f0_mean'], pitch_prediction['f0_std'], pitch_config['cwt_scales'])
-                if pitch_config['use_uv']:
+                f0_pred = cwt2f0(cwt_spec, pitch_prediction["f0_mean"], pitch_prediction["f0_std"], pitch_config["cwt_scales"])
+                if pitch_config["use_uv"]:
                     assert cwt_out.shape[-1] == 11
                     uv_pred = cwt_out[:, :, -1] > 0
                     f0_pred[uv_pred > 0] = 0
-                f0_cwt = denorm_f0(pitch_target['f0_cwt'], pitch_target['uv'], pitch_config)
+                f0_cwt = denorm_f0(pitch_target["f0_cwt"], pitch_target["uv"], pitch_config)
                 figs["f0"] = f0_to_figure(f0[0, :mel_len], f0_cwt[0, :mel_len], f0_pred[0, :mel_len])
-            elif pitch_type == 'frame':
+            elif pitch_type == "frame":
                 # f0
-                uv_pred = pitch_prediction['pitch_pred'][:, :, 1] > 0
-                pitch_pred = denorm_f0(pitch_prediction['pitch_pred'][:, :, 0], uv_pred, pitch_config)
+                uv_pred = pitch_prediction["pitch_pred"][:, :, 1] > 0
+                pitch_pred = denorm_f0(pitch_prediction["pitch_pred"][:, :, 0], uv_pred, pitch_config)
                 figs["f0"] = f0_to_figure(f0[0, :mel_len], None, pitch_pred[0, :mel_len])
     if use_energy_embed:
         if preprocess_config["preprocessing"]["energy"]["feature"] == "phoneme_level":
@@ -316,15 +316,15 @@ def f0_to_figure(f0_gt, f0_cwt=None, f0_pred=None):
     fig = plt.figure()
     if isinstance(f0_gt, torch.Tensor):
         f0_gt = f0_gt.detach().cpu().numpy()
-    plt.plot(f0_gt, color='r', label='gt')
+    plt.plot(f0_gt, color="r", label="gt")
     if f0_cwt is not None:
         if isinstance(f0_cwt, torch.Tensor):
             f0_cwt = f0_cwt.detach().cpu().numpy()
-        plt.plot(f0_cwt, color='b', label='cwt')
+        plt.plot(f0_cwt, color="b", label="cwt")
     if f0_pred is not None:
         if isinstance(f0_pred, torch.Tensor):
             f0_pred = f0_pred.detach().cpu().numpy()
-        plt.plot(f0_pred, color='green', label='pred')
+        plt.plot(f0_pred, color="green", label="pred")
     plt.legend()
     return fig
 
@@ -333,11 +333,11 @@ def energy_to_figure(energy_gt, energy_pred=None):
     fig = plt.figure()
     if isinstance(energy_gt, torch.Tensor):
         energy_gt = energy_gt.detach().cpu().numpy()
-    plt.plot(energy_gt, color='r', label='gt')
+    plt.plot(energy_gt, color="r", label="gt")
     if energy_pred is not None:
         if isinstance(energy_pred, torch.Tensor):
             energy_pred = energy_pred.detach().cpu().numpy()
-        plt.plot(energy_pred, color='green', label='pred')
+        plt.plot(energy_pred, color="green", label="pred")
     plt.legend()
     return fig
 
@@ -437,7 +437,7 @@ def dur_to_mel2ph(dur, dur_padding=None, alpha=1.0):
         dur = dur * (1 - dur_padding.long())
     token_idx = torch.arange(1, dur.shape[1] + 1)[None, :, None].to(dur.device)
     dur_cumsum = torch.cumsum(dur, 1)
-    dur_cumsum_prev = F.pad(dur_cumsum, [1, -1], mode='constant', value=0)
+    dur_cumsum_prev = F.pad(dur_cumsum, [1, -1], mode="constant", value=0)
 
     pos_idx = torch.arange(dur.sum(-1).max())[None, None].to(dur.device)
     token_mask = (pos_idx >= dur_cumsum_prev[:, :, None]) & (pos_idx < dur_cumsum[:, :, None])
@@ -461,7 +461,7 @@ def make_positions(tensor, padding_idx):
     """
     # The series of casts and type-conversions here are carefully
     # balanced to both work with ONNX export and XLA. In particular XLA
-    # prefers ints, cumsum defaults to output longs, and ONNX doesn't know
+    # prefers ints, cumsum defaults to output longs, and ONNX doesn"t know
     # how to handle the dtype kwarg in cumsum.
     mask = tensor.ne(padding_idx).int()
     return (

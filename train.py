@@ -180,11 +180,11 @@ if __name__ == "__main__":
     parser.add_argument("--restore_step", type=int, default=0)
     parser.add_argument("--path_tag", type=str, default="")
     parser.add_argument(
-        '--model',
+        "--model",
         type=str,
-        choices=['naive', 'aux', 'shallow'],
+        choices=["naive", "aux", "shallow"],
         required=True,
-        help='training model type',
+        help="training model type",
     )
     parser.add_argument(
         "--dataset",
@@ -209,19 +209,19 @@ if __name__ == "__main__":
     train_config["path"]["ckpt_path"] = train_config["path"]["ckpt_path"]+"_{}{}".format(train_tag, path_tag)
     train_config["path"]["log_path"] = train_config["path"]["log_path"]+"_{}{}".format(train_tag, path_tag)
     train_config["path"]["result_path"] = train_config["path"]["result_path"]+"_{}{}".format(args.model, path_tag)
-    if preprocess_config["preprocessing"]["pitch"]["pitch_type"] == 'cwt':
-        from utils.pitch_utils import get_lf0_cwt
+    if preprocess_config["preprocessing"]["pitch"]["pitch_type"] == "cwt":
+        from utils.pitch_tools import get_lf0_cwt
         preprocess_config["preprocessing"]["pitch"]["cwt_scales"] = get_lf0_cwt(np.ones(10))[1]
 
     # Log Configuration
     print("\n==================================== Training Configuration ====================================")
     print(" ---> Type of Modeling:", args.model)
-    print(' ---> Total Batch Size:', int(train_config["optimizer"]["batch_size"]))
-    print(' ---> Use Pitch Embed:', model_config["variance_embedding"]["use_pitch_embed"])
-    print(' ---> Use Energy Embed:', model_config["variance_embedding"]["use_energy_embed"])
-    print(' ---> Path of ckpt:', train_config["path"]["ckpt_path"])
-    print(' ---> Path of log:', train_config["path"]["log_path"])
-    print(' ---> Path of result:', train_config["path"]["result_path"])
+    print(" ---> Total Batch Size:", int(train_config["optimizer"]["batch_size"]))
+    print(" ---> Use Pitch Embed:", model_config["variance_embedding"]["use_pitch_embed"])
+    print(" ---> Use Energy Embed:", model_config["variance_embedding"]["use_energy_embed"])
+    print(" ---> Path of ckpt:", train_config["path"]["ckpt_path"])
+    print(" ---> Path of log:", train_config["path"]["log_path"])
+    print(" ---> Path of result:", train_config["path"]["result_path"])
     print("================================================================================================")
 
     main(args, configs)

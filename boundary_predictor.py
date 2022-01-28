@@ -69,15 +69,15 @@ if __name__ == "__main__":
     train_config["path"]["ckpt_path"] = train_config["path"]["ckpt_path"]+"_{}{}".format("shallow", path_tag)
     train_config["path"]["log_path"] = train_config["path"]["log_path"]+"_{}{}".format("shallow", path_tag)
     train_config["path"]["result_path"] = train_config["path"]["result_path"]+"_{}{}".format("aux", path_tag)
-    if preprocess_config["preprocessing"]["pitch"]["pitch_type"] == 'cwt':
+    if preprocess_config["preprocessing"]["pitch"]["pitch_type"] == "cwt":
         import numpy as np
-        from utils.pitch_utils import get_lf0_cwt
+        from utils.pitch_tools import get_lf0_cwt
         preprocess_config["preprocessing"]["pitch"]["cwt_scales"] = get_lf0_cwt(np.ones(10))[1]
 
     # Log Configuration
     print("\n==================================== Prediction Configuration ====================================")
-    print(' ---> Total Batch Size:', int(train_config["optimizer"]["batch_size"]))
-    print(' ---> Path of ckpt:', train_config["path"]["ckpt_path"])
+    print(" ---> Total Batch Size:", int(train_config["optimizer"]["batch_size"]))
+    print(" ---> Path of ckpt:", train_config["path"]["ckpt_path"])
     print("================================================================================================")
 
     # Get model

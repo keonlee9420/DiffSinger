@@ -56,7 +56,7 @@ For example, one can increase the speaking rate by 20 % and decrease the volume 
 python3 synthesize.py --text "YOUR_DESIRED_TEXT" --model MODEL --restore_step RESTORE_STEP --mode single --dataset DATASET --duration_control 0.8 --energy_control 0.8
 ```
 
-Please note that the controllability is originated from [FastSpeech2](https://arxiv.org/abs/2006.04558) and not a vital interest of PortaSpeech.
+Please note that the controllability is originated from [FastSpeech2](https://arxiv.org/abs/2006.04558) and not a vital interest of DiffSpeech.
 
 # Training
 
@@ -65,7 +65,6 @@ Please note that the controllability is originated from [FastSpeech2](https://ar
 The supported datasets are
 
 - [LJSpeech](https://keithito.com/LJ-Speech-Dataset/): a single-speaker English dataset consists of 13100 short audio clips of a female speaker reading passages from 7 non-fiction books, approximately 24 hours in total.
-- (will be added more)
 
 ## Preprocessing
  
@@ -142,18 +141,8 @@ The loss curves, synthesized mel-spectrograms, and audios are shown.
 
 # Notes
 
-1. **Pitch extractor comparison (on LJ001-0006.wav)**
-
-    <p align="center">
-        <img src="img/pitch_extractor_comparison.png" width="100%">
-    </p>
-
-    **pyworld** is used to extract f0 (fundamental frequency) as pitch information in this implementation. Empirically, however, I found that all three methods were equally acceptable for clean datasets (e.g., LJSpeech) as above figures. Note that **pysptk** would work better for noisy datasets (as described in [STYLER](https://github.com/keonlee9420/STYLER)).
-
-2. Stack two layers of `FFTBlock` for the lyrics encoder (text encoder).
-3. (Naive version of DiffSpeech) The number of learnable parameters is `22.517M`, which is smaller than the original paper (`27.722M`).
-4. I did not remove the energy prediction of FastSpeech2 since it is not critical to the model training or performance (as described in [LightSpeech](https://arxiv.org/abs/2102.04040)). It should be easily removed without any performance degradation.
-5. Use **HiFi-GAN** instead of **Parallel WaveGAN (PWG)** for vocoding.
+1. (Naive version of DiffSpeech) The number of learnable parameters is `27.767M`, which is similar to the original paper (`27.722M`).
+2. Use **HiFi-GAN** instead of **Parallel WaveGAN (PWG)** for vocoding.
 
 # Citation
 

@@ -127,13 +127,13 @@ if __name__ == "__main__":
     parser.add_argument("--restore_step", type=int, required=True)
     parser.add_argument("--path_tag", type=str, default="")
     parser.add_argument(
-        '--model',
+        "--model",
         type=str,
-        choices=['naive', 'aux', 'shallow'],
+        choices=["naive", "aux", "shallow"],
         required=True,
-        help='training model type',
+        help="training model type",
     )
-    parser.add_argument('--teacher_forced', action='store_true')
+    parser.add_argument("--teacher_forced", action="store_true")
     parser.add_argument(
         "--mode",
         type=str,
@@ -210,8 +210,8 @@ if __name__ == "__main__":
     train_config["path"]["ckpt_path"] = train_config["path"]["ckpt_path"]+"_{}{}".format(train_tag, path_tag)
     train_config["path"]["log_path"] = train_config["path"]["log_path"]+"_{}{}".format(train_tag, path_tag)
     train_config["path"]["result_path"] = train_config["path"]["result_path"]+"_{}{}".format(args.model, path_tag)
-    if preprocess_config["preprocessing"]["pitch"]["pitch_type"] == 'cwt':
-        from utils.pitch_utils import get_lf0_cwt
+    if preprocess_config["preprocessing"]["pitch"]["pitch_type"] == "cwt":
+        from utils.pitch_tools import get_lf0_cwt
         preprocess_config["preprocessing"]["pitch"]["cwt_scales"] = get_lf0_cwt(np.ones(10))[1]
     os.makedirs(
         os.path.join(train_config["path"]["result_path"], str(args.restore_step)), exist_ok=True)
@@ -219,10 +219,10 @@ if __name__ == "__main__":
     # Log Configuration
     print("\n==================================== Inference Configuration ====================================")
     print(" ---> Type of Modeling:", args.model)
-    print(' ---> Total Batch Size:', int(train_config["optimizer"]["batch_size"]))
-    print(' ---> Path of ckpt:', train_config["path"]["ckpt_path"])
-    print(' ---> Path of log:', train_config["path"]["log_path"])
-    print(' ---> Path of result:', train_config["path"]["result_path"])
+    print(" ---> Total Batch Size:", int(train_config["optimizer"]["batch_size"]))
+    print(" ---> Path of ckpt:", train_config["path"]["ckpt_path"])
+    print(" ---> Path of log:", train_config["path"]["log_path"])
+    print(" ---> Path of result:", train_config["path"]["result_path"])
     print("================================================================================================")
 
     # Get model

@@ -37,12 +37,12 @@ def f0_to_coarse(f0):
 
 def norm_f0(f0, uv, config):
     is_torch = isinstance(f0, torch.Tensor)
-    if config["pitch_norm"] == 'standard':
-        f0 = (f0 - config['f0_mean']) / config['f0_std']
-    if config["pitch_norm"] == 'log':
+    if config["pitch_norm"] == "standard":
+        f0 = (f0 - config["f0_mean"]) / config["f0_std"]
+    if config["pitch_norm"] == "log":
         eps = config["pitch_norm_eps"]
         f0 = torch.log2(f0 + eps) if is_torch else np.log2(f0 + eps)
-    if uv is not None and config['use_uv']:
+    if uv is not None and config["use_uv"]:
         f0[uv > 0] = 0
     return f0
 
@@ -66,15 +66,15 @@ def norm_interp_f0(f0, config):
 
 
 def denorm_f0(f0, uv, config, pitch_padding=None, min=None, max=None):
-    if config['pitch_norm'] == 'standard':
-        f0 = f0 * config['f0_std'] + config['f0_mean']
-    if config['pitch_norm'] == 'log':
+    if config["pitch_norm"] == "standard":
+        f0 = f0 * config["f0_std"] + config["f0_mean"]
+    if config["pitch_norm"] == "log":
         f0 = 2 ** f0
     if min is not None:
         f0 = f0.clamp(min=min)
     if max is not None:
         f0 = f0.clamp(max=max)
-    if uv is not None and config['use_uv']:
+    if uv is not None and config["use_uv"]:
         f0[uv > 0] = 0
     if pitch_padding is not None:
         f0[pitch_padding] = 0
@@ -104,10 +104,10 @@ def get_pitch(wav_data, mel, config):
 
     f0 = parselmouth.Sound(wav_data, sampling_rate).to_pitch_ac(
         time_step=time_step / 1000, voicing_threshold=0.6,
-        pitch_floor=f0_min, pitch_ceiling=f0_max).selected_array['frequency']
+        pitch_floor=f0_min, pitch_ceiling=f0_max).selected_array["frequency"]
     lpad = pad_size * 2
     rpad = len(mel) - len(f0) - lpad
-    f0 = np.pad(f0, [[lpad, rpad]], mode='constant')
+    f0 = np.pad(f0, [[lpad, rpad]], mode="constant")
     # mel and f0 are extracted by 2 different libraries. we should force them to have the same length.
     # Attention: we find that new version of some libraries could cause ``rpad'' to be a negetive value...
     # Just to be sure, we recommend users to set up the same environments as them in requirements_auto.txt (by Anaconda)
@@ -138,12 +138,12 @@ def load_wav(wav_file, sr):
 
 
 def convert_continuos_f0(f0):
-    '''CONVERT F0 TO CONTINUOUS F0
+    """CONVERT F0 TO CONTINUOUS F0
     Args:
         f0 (ndarray): original f0 sequence with the shape (T)
     Return:
         (ndarray): continuous f0 with the shape (T)
-    '''
+    """
     # get uv information as binary
     f0 = np.copy(f0)
     uv = np.float32(f0 != 0)
@@ -179,12 +179,12 @@ def get_cont_lf0(f0, frame_period=5.0):
 
 
 def get_lf0_cwt(lf0):
-    '''
+    """
     input:
         signal of shape (N)
     output:
         Wavelet_lf0 of shape(10, N), scales of shape(10)
-    '''
+    """
     mother = wavelet.MexicanHat()
     dt = 0.005
     dj = 1
