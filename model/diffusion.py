@@ -349,28 +349,45 @@ class GaussianDiffusionShallow(nn.Module):
         return noised_mel, epsilon, loss
 
     @torch.no_grad()
-    def expected_kld_t(self, x_pred, x_gt, t):
-        x_pred, x_gt = self.norm_spec(x_pred), self.norm_spec(x_gt)
-        t = torch.ones(x_pred.shape[0], device=x_pred.device).long() * (t-1)
-        coef = extract(self.alphas_cumprod / (2 * (1. - self.alphas_cumprod)), t, x_pred.shape)
-        return coef[0].squeeze() * F.mse_loss(x_pred, x_gt)
+    def kld_input(self, x, t=None, mask=None):
+        x = self.norm_spec(x)
+        x = x.transpose(1, 2)[:, None, :, :]  # [B, 1, M, T]
+        if t is not None:
+            t = torch.ones(x.shape[0], device=x.device).long() * (t-1)
+        if mask is not None:
+            mask = ~mask.unsqueeze(-1).transpose(1, 2)
+        return x, t, mask
 
     @torch.no_grad()
-    def expected_kld_T(self, x_start, noise=None):
-        x_start_noised = self.noised_mel(x_start)
-        mu = x_start_noised.mean()
-        logvar = x_start_noised.var().log()
-        return -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-
-    @torch.no_grad()
-    def noised_mel(self, x_start, t=None, noise=None):
-        t = self.num_timesteps if t is None else t
-        t = torch.ones(x_start.shape[0], device=x_start.device).long() * (t-1)
-        x_start = self.norm_spec(x_start)
-        x_start = x_start.transpose(1, 2)[:, None, :, :]  # [B, 1, M, T]
+    def noised_mel(self, x_start, t=None, noise=None, squeeze=True):
         noise = default(noise, lambda: torch.randn_like(x_start))
         noised_mel = self.q_sample(x_start=x_start, t=t, noise=noise)
-        return noised_mel.squeeze().transpose(1, 2)
+        if squeeze:
+            noised_mel = noised_mel.squeeze(1)
+        return noised_mel
+
+    @torch.no_grad()
+    def expected_kld_t(self, x_pred, x_gt, t, mask):
+        x_pred, t, mask = self.kld_input(x_pred, t, mask)
+        x_gt, *_ = self.kld_input(x_gt)
+
+        coef = extract(self.alphas_cumprod / (2 * self.log_one_minus_alphas_cumprod.exp()), t, x_pred.shape)
+        kld = F.mse_loss(self.noised_mel(x_pred, t), self.noised_mel(x_gt, t), reduction='none')
+        kld = (kld * mask).sum() / mask.sum() # or kld.mean() ?
+        # kld = kld.mean() # or (kld * mask).sum() / mask.sum() ?
+        kld = coef[0].squeeze() * kld
+        return kld
+
+    @torch.no_grad()
+    def expected_kld_T(self, x_start, mask, noise=None):
+        t = self.num_timesteps # t = T
+        x_start, t, mask = self.kld_input(x_start, t, mask)
+
+        mu, _, logvar = self.q_mean_variance(x_start, t)
+        mu, logvar = (mu.squeeze(1) * mask), (logvar.squeeze(1) * mask)
+        kld = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        kld = kld / mask.sum()
+        return kld
 
     @torch.no_grad()
     def sampling(self):

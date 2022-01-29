@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from utils.model import get_model
-from utils.tools import get_configs_of, to_device
+from utils.tools import get_configs_of, to_device, get_mask_from_lengths
 from dataset import Dataset
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -23,17 +23,19 @@ def predict(model, step, configs, loader, len_dataset):
             batch = to_device(batch, device)
             with torch.no_grad():
                 # Forward
-                target_mel = batch[6]
+                target_mel, mel_lens, max_mel_len = batch[6:9]
+                target_mel_mask = get_mask_from_lengths(mel_lens, max_mel_len)
                 teacher_forced_mel = model(*(batch[2:]))[0][0]
-                kld_T += model.diffusion.expected_kld_T(teacher_forced_mel) * len(batch[0])
+                kld_T += model.diffusion.expected_kld_T(target_mel, target_mel_mask) * len(batch[0])
 
                 for t in range(1, num_timesteps+1):
-                    kld_t = model.diffusion.expected_kld_t(teacher_forced_mel, target_mel, t)
+                    kld_t = model.diffusion.expected_kld_t(teacher_forced_mel, target_mel, t, target_mel_mask)
                     kld_ts[t] += kld_t * len(batch[0])
 
     kld_T = kld_T / len_dataset
     kld_ts = [kld_t / len_dataset for kld_t in kld_ts[1:]]
-
+    # print(kld_ts)
+    # print(kld_T)
     K = 0
     for kld_t in kld_ts:
         K += 1
