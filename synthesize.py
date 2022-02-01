@@ -1,17 +1,19 @@
+import os
 import re
 import argparse
 from string import punctuation
+from tqdm import tqdm
 
 import torch
 import yaml
 import numpy as np
 from torch.utils.data import DataLoader
 from g2p_en import G2p
-from pypinyin import pinyin, Style
+# from pypinyin import pinyin, Style
 
 from utils.model import get_model, get_vocoder
-from utils.tools import to_device, synth_samples
-from dataset import TextDataset
+from utils.tools import get_configs_of, to_device, synth_samples
+from dataset import Dataset, TextDataset
 from text import text_to_sequence
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -56,39 +58,39 @@ def preprocess_english(text, preprocess_config):
     return np.array(sequence)
 
 
-def preprocess_mandarin(text, preprocess_config):
-    lexicon = read_lexicon(preprocess_config["path"]["lexicon_path"])
+# def preprocess_mandarin(text, preprocess_config):
+#     lexicon = read_lexicon(preprocess_config["path"]["lexicon_path"])
 
-    phones = []
-    pinyins = [
-        p[0]
-        for p in pinyin(
-            text, style=Style.TONE3, strict=False, neutral_tone_with_five=True
-        )
-    ]
-    for p in pinyins:
-        if p in lexicon:
-            phones += lexicon[p]
-        else:
-            phones.append("sp")
+#     phones = []
+#     pinyins = [
+#         p[0]
+#         for p in pinyin(
+#             text, style=Style.TONE3, strict=False, neutral_tone_with_five=True
+#         )
+#     ]
+#     for p in pinyins:
+#         if p in lexicon:
+#             phones += lexicon[p]
+#         else:
+#             phones.append("sp")
 
-    phones = "{" + " ".join(phones) + "}"
-    print("Raw Text Sequence: {}".format(text))
-    print("Phoneme Sequence: {}".format(phones))
-    sequence = np.array(
-        text_to_sequence(
-            phones, preprocess_config["preprocessing"]["text"]["text_cleaners"]
-        )
-    )
+#     phones = "{" + " ".join(phones) + "}"
+#     print("Raw Text Sequence: {}".format(text))
+#     print("Phoneme Sequence: {}".format(phones))
+#     sequence = np.array(
+#         text_to_sequence(
+#             phones, preprocess_config["preprocessing"]["text"]["text_cleaners"]
+#         )
+#     )
 
-    return np.array(sequence)
+#     return np.array(sequence)
 
 
-def synthesize(model, step, configs, vocoder, batchs, control_values):
+def synthesize(model, args, configs, vocoder, batchs, control_values):
     preprocess_config, model_config, train_config = configs
     pitch_control, energy_control, duration_control = control_values
 
-    for batch in batchs:
+    def synthesize_(batch):
         batch = to_device(batch, device)
         with torch.no_grad():
             # Forward
@@ -97,7 +99,7 @@ def synthesize(model, step, configs, vocoder, batchs, control_values):
                 p_control=pitch_control,
                 e_control=energy_control,
                 d_control=duration_control
-            )
+            )[0]
             synth_samples(
                 batch,
                 output,
@@ -105,13 +107,33 @@ def synthesize(model, step, configs, vocoder, batchs, control_values):
                 model_config,
                 preprocess_config,
                 train_config["path"]["result_path"],
+                args,
             )
+
+    if args.teacher_forced:
+        for batchs_ in batchs:
+            for batch in tqdm(batchs_):
+                batch = list(batch)
+                batch[6] = None # set mel None for diffusion sampling
+                synthesize_(batch)
+    else:
+        for batch in tqdm(batchs):
+            synthesize_(batch)
 
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--restore_step", type=int, required=True)
+    parser.add_argument("--path_tag", type=str, default="")
+    parser.add_argument(
+        "--model",
+        type=str,
+        choices=["naive", "aux", "shallow"],
+        required=True,
+        help="training model type",
+    )
+    parser.add_argument("--teacher_forced", action="store_true")
     parser.add_argument(
         "--mode",
         type=str,
@@ -138,17 +160,10 @@ if __name__ == "__main__":
         help="speaker ID for multi-speaker synthesis, for single-sentence mode only",
     )
     parser.add_argument(
-        "-p",
-        "--preprocess_config",
+        "--dataset",
         type=str,
         required=True,
-        help="path to preprocess.yaml",
-    )
-    parser.add_argument(
-        "-m", "--model_config", type=str, required=True, help="path to model.yaml"
-    )
-    parser.add_argument(
-        "-t", "--train_config", type=str, required=True, help="path to train.yaml"
+        help="name of dataset",
     )
     parser.add_argument(
         "--pitch_control",
@@ -172,17 +187,43 @@ if __name__ == "__main__":
 
     # Check source texts
     if args.mode == "batch":
-        assert args.source is not None and args.text is None
+        assert args.text is None
+        if args.teacher_forced:
+            assert args.source is None
+        else:
+            assert args.source is not None
     if args.mode == "single":
-        assert args.source is None and args.text is not None
+        assert args.source is None and args.text is not None and not args.teacher_forced
 
     # Read Config
-    preprocess_config = yaml.load(
-        open(args.preprocess_config, "r"), Loader=yaml.FullLoader
-    )
-    model_config = yaml.load(open(args.model_config, "r"), Loader=yaml.FullLoader)
-    train_config = yaml.load(open(args.train_config, "r"), Loader=yaml.FullLoader)
+    preprocess_config, model_config, train_config = get_configs_of(args.dataset)
     configs = (preprocess_config, model_config, train_config)
+    if args.model == "shallow":
+        assert args.restore_step >= train_config["step"]["total_step_aux"]
+    if args.model in ["aux", "shallow"]:
+        train_tag = "shallow"
+    elif args.model == "naive":
+        train_tag = "naive"
+    else:
+        raise NotImplementedError
+    path_tag = "_{}".format(args.path_tag) if args.path_tag != "" else args.path_tag
+    train_config["path"]["ckpt_path"] = train_config["path"]["ckpt_path"]+"_{}{}".format(train_tag, path_tag)
+    train_config["path"]["log_path"] = train_config["path"]["log_path"]+"_{}{}".format(train_tag, path_tag)
+    train_config["path"]["result_path"] = train_config["path"]["result_path"]+"_{}{}".format(args.model, path_tag)
+    if preprocess_config["preprocessing"]["pitch"]["pitch_type"] == "cwt":
+        from utils.pitch_tools import get_lf0_cwt
+        preprocess_config["preprocessing"]["pitch"]["cwt_scales"] = get_lf0_cwt(np.ones(10))[1]
+    os.makedirs(
+        os.path.join(train_config["path"]["result_path"], str(args.restore_step)), exist_ok=True)
+
+    # Log Configuration
+    print("\n==================================== Inference Configuration ====================================")
+    print(" ---> Type of Modeling:", args.model)
+    print(" ---> Total Batch Size:", int(train_config["optimizer"]["batch_size"]))
+    print(" ---> Path of ckpt:", train_config["path"]["ckpt_path"])
+    print(" ---> Path of log:", train_config["path"]["log_path"])
+    print(" ---> Path of result:", train_config["path"]["result_path"])
+    print("================================================================================================")
 
     # Get model
     model = get_model(args, configs, device, train=False)
@@ -193,7 +234,12 @@ if __name__ == "__main__":
     # Preprocess texts
     if args.mode == "batch":
         # Get dataset
-        dataset = TextDataset(args.source, preprocess_config)
+        if args.teacher_forced:
+            dataset = Dataset(
+                "val.txt", preprocess_config, train_config, sort=False, drop_last=False
+            )
+        else:
+            dataset = TextDataset(args.source, preprocess_config)
         batchs = DataLoader(
             dataset,
             batch_size=8,
@@ -205,10 +251,10 @@ if __name__ == "__main__":
         if preprocess_config["preprocessing"]["text"]["language"] == "en":
             texts = np.array([preprocess_english(args.text, preprocess_config)])
         elif preprocess_config["preprocessing"]["text"]["language"] == "zh":
-            texts = np.array([preprocess_mandarin(args.text, preprocess_config)])
+            raise NotImplementedError
         text_lens = np.array([len(texts[0])])
         batchs = [(ids, raw_texts, speakers, texts, text_lens, max(text_lens))]
 
     control_values = args.pitch_control, args.energy_control, args.duration_control
 
-    synthesize(model, args.restore_step, configs, vocoder, batchs, control_values)
+    synthesize(model, args, configs, vocoder, batchs, control_values)
