@@ -34,8 +34,8 @@ def predict(model, step, configs, loader, len_dataset):
 
     kld_T = kld_T / len_dataset
     kld_ts = [kld_t / len_dataset for kld_t in kld_ts[1:]]
-    # print(kld_ts)
-    # print(kld_T)
+    print(kld_ts)
+    print(kld_T)
     K = 0
     for kld_t in kld_ts:
         K += 1

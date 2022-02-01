@@ -19,7 +19,7 @@ denoiser:
   noise_schedule_naive: "cosine"
   noise_schedule_shallow: "linear"
   timesteps: 100
-  K_step: 71
+  K_step: 100
   max_beta: 0.06
   s: 0.008
   keep_bins: 80

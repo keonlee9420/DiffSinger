@@ -374,7 +374,6 @@ class GaussianDiffusionShallow(nn.Module):
         coef = extract(self.alphas_cumprod / (2 * self.log_one_minus_alphas_cumprod.exp()), t, x_pred.shape)
         kld = F.mse_loss(self.noised_mel(x_pred, t), self.noised_mel(x_gt, t), reduction='none')
         kld = (kld * mask).sum() / mask.sum() # or kld.mean() ?
-        # kld = kld.mean() # or (kld * mask).sum() / mask.sum() ?
         kld = coef[0].squeeze() * kld
         return kld
 

@@ -145,7 +145,8 @@ The loss curves, synthesized mel-spectrograms, and audios are shown.
 # Notes
 
 1. (Naive version of DiffSpeech) The number of learnable parameters is `27.767M`, which is similar to the original paper (`27.722M`).
-2. Use **HiFi-GAN** instead of **Parallel WaveGAN (PWG)** for vocoding.
+2. Unfortunately, the predicted boundary (of LJSpeech) for the shallow diffusion in the current implementation is `100`, which is the full timesteps of the naive diffusion so that there is no advantage on diffusion steps.
+3. Use **HiFi-GAN** instead of **Parallel WaveGAN (PWG)** for vocoding.
 
 # Citation
 
