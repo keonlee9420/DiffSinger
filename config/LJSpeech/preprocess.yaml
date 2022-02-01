@@ -4,7 +4,7 @@ path:
   corpus_path: "/mnt/nfs2/speech-datasets/en/LJSpeech-1.1"
   lexicon_path: "lexicon/librispeech-lexicon.txt"
   raw_path: "./raw_data/LJSpeech"
-  preprocessed_path: "./preprocessed_data/LJSpeech_cwt"
+  preprocessed_path: "./preprocessed_data/LJSpeech"
 
 preprocessing:
   val_size: 512
