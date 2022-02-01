@@ -138,9 +138,21 @@ tensorboard --logdir output/log/LJSpeech
 to serve TensorBoard on your localhost.
 The loss curves, synthesized mel-spectrograms, and audios are shown.
 
-<!-- ![](./img/tensorboard_loss.png)
-![](./img/tensorboard_spec.png)
-![](./img/tensorboard_audio.png) -->
+## Naive Diffusion
+
+![](./img/tensorboard_loss_naive.png)
+![](./img/tensorboard_spec_naive.png)
+![](./img/tensorboard_audio_naive.png)
+
+## Shallow Diffusion
+
+![](./img/tensorboard_loss_shallow.png)
+![](./img/tensorboard_spec_shallow.png)
+![](./img/tensorboard_audio_shallow.png)
+
+## Loss Comparison
+
+![](./img/tensorboard_loss_comparison.png)
 
 # Notes
 
